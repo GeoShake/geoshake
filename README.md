@@ -5,7 +5,9 @@
   <img src="https://img.shields.io/badge/Version-2.0.0-purple" alt="Version">
 </p>
 
-# 🌍 GeoShake
+<p align="center">
+  <img src="assets/images/logo-geoshake.png" alt="GeoShake" width="400">
+</p>
 
 **A DIY, Open-Source IoT Seismic Monitoring Station**
 
