@@ -1,0 +1,102 @@
+GeoShake Seismic Data — License
+===============================
+
+Copyright (c) 2024-2026 Appflows Teknoloji A.S. and the GeoShake
+station operators.
+
+GeoShake network data — event catalogue, station metadata, ground-motion
+features, waveforms and derived products, however obtained (web API,
+FDSN web services, SeedLink, MQTT, SAC/StationXML downloads) — is
+published under:
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+SPDX-License-Identifier: CC-BY-4.0
+
+Full legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+Summary:         https://creativecommons.org/licenses/by/4.0/
+
+You are free to share and adapt the data for any purpose, including
+commercially and in academic publications, provided you give
+appropriate credit and indicate if changes were made.
+
+CC BY 4.0 (unlike version 3.0) also licenses the sui generis database
+rights that apply in the European Union, so the dataset as a whole is
+covered, not just its individual records.
+
+
+HOW TO CITE
+-----------
+
+   GeoShake Seismic Network, https://map.geoshake.org
+   (accessed YYYY-MM-DD), CC BY 4.0
+
+If you use the data in a publication we would like to hear about it:
+https://geoshake.org/contact
+
+
+STATION LOCATIONS AND PRIVACY
+-----------------------------
+
+Station coordinates are chosen by the station operator during setup, not
+collected automatically. Operators are told at that point that the
+station map is public and that an approximate position is sufficient —
+many deliberately offset the pin from their exact address.
+
+Treat published coordinates as approximate. Do not attempt to use them
+to identify, locate or contact the residents of a station, and do not
+combine them with other datasets for that purpose.
+
+If you are a station operator and want your station's position changed
+or removed, contact https://geoshake.org/contact
+
+
+WHAT THIS DATA IS - AND IS NOT
+------------------------------
+
+Please represent the data accurately in any work based on it:
+
+- Sensors are consumer-grade MEMS accelerometers. They are NOT
+  calibrated, and no instrument response is published. Station metadata
+  is therefore provided only down to station level - no channel response
+  is available.
+- Amplitudes are indicative, not metrologically traceable. Do not treat
+  them as equivalent to a calibrated seismometer.
+- The network code currently published in StationXML, SAC and SeedLink
+  is PROVISIONAL and not yet registered with the FDSN. It will change
+  once a code is assigned.
+- Event detections are produced by an automatic algorithm. They are not
+  reviewed by a seismologist and may contain false positives and missed
+  events.
+- Station coverage is uneven and changes continuously as operators join
+  and leave.
+
+
+NO WARRANTY - NOT A SAFETY SYSTEM
+---------------------------------
+
+The data is provided "as is", without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability
+and fitness for a particular purpose.
+
+GeoShake is a community monitoring network, NOT an official earthquake
+early warning service and NOT a substitute for one. Do not use this data
+or these services as the sole basis for life-safety, evacuation,
+structural, insurance or emergency-response decisions. Always follow the
+guidance of your national seismological and civil protection authorities.
+
+To the maximum extent permitted by applicable law, Appflows Teknoloji
+A.S. accepts no liability for any loss or damage arising from use of, or
+reliance on, this data.
+
+
+SERVICE AVAILABILITY
+--------------------
+
+The data is openly licensed, but the services that deliver it are
+operated on a best-effort basis with no uptime guarantee. Endpoints may
+be rate-limited, changed or withdrawn. Heavy or automated use should go
+through https://geoshake.org/developer so we can keep the service usable
+for everyone.
+
+Trademarks are not licensed by CC BY 4.0. See TRADEMARKS.md.

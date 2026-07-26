@@ -24,11 +24,20 @@ parts of this repository use different licenses:
    SPDX-License-Identifier: CC-BY-SA-4.0
    Full text: docs/LICENSE
 
+4. SEISMIC DATA (the GeoShake network's event catalogue, station
+   metadata, ground-motion features and waveforms, however obtained)
+   License: Creative Commons Attribution 4.0 International
+   SPDX-License-Identifier: CC-BY-4.0
+   Full text: data/LICENSE
+
 What this means in practice:
 - You may study, modify, build, distribute and sell devices based on the
-  firmware and enclosure designs, including commercially.
-- Both licenses are share-alike: if you distribute modified versions, you
-  must publish your modifications under the same license.
+  firmware and enclosure designs, including commercially, and you may use
+  the data freely including in commercial and academic work.
+- The firmware (GPL-3.0) and the enclosure designs (CC BY-SA 4.0) are
+  share-alike: if you distribute modified versions, you must publish your
+  modifications under the same license. The data (CC BY 4.0) is not
+  share-alike — attribution is all it asks.
 - You must keep the copyright notices and license notices intact.
 
 NOT COVERED BY THESE LICENSES
@@ -48,5 +57,6 @@ Trademarks. "GeoShake", the GeoShake logo and the wave device are
 trademarks of Appflows Teknoloji A.S. and are expressly excluded from
 the licenses above. See TRADEMARKS.md.
 
-Seismic data. GeoShake network data is published separately at
-https://geoshake.org/open-data under its own terms.
+Seismic data is openly licensed (CC BY 4.0, see data/LICENSE) but the
+services that deliver it are operated on a best-effort basis. Access and
+documentation: https://geoshake.org/developer

@@ -5,12 +5,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Firmware-GPL--3.0--or--later-blue" alt="Firmware License">
   <img src="https://img.shields.io/badge/Enclosure-CC%20BY--SA%204.0-blue" alt="Enclosure License">
+  <img src="https://img.shields.io/badge/Data-CC%20BY%204.0-blue" alt="Data License">
   <img src="https://img.shields.io/badge/Platform-ESP32--S3-orange" alt="Platform">
   <img src="https://img.shields.io/badge/Device-GeoShake%20T1%20Rev--C-purple" alt="Device">
 </p>
 
-**Open source firmware and open enclosure designs for a real-time
-earthquake monitoring station.**
+**Open source firmware, open enclosure designs and open data for a
+real-time earthquake monitoring station.**
 
 GeoShake is a distributed, real-time earthquake monitoring station. Devices
 are placed in homes, offices and schools and contribute to a global seismic
@@ -18,7 +19,7 @@ network with a mobile app, live station map and earthquake notifications.
 
 - 🛒 Ready-made devices & mobile app: [geoshake.org](https://geoshake.org)
 - 🗺️ Live station map: [geoshake.org](https://geoshake.org)
-- 📊 Seismic data: [geoshake.org/open-data](https://geoshake.org/open-data)
+- 📊 Seismic data & APIs: [geoshake.org/developer](https://geoshake.org/developer)
 
 ## What is open, and what is not
 
@@ -30,7 +31,7 @@ We would rather be precise than sound impressive:
 | DSP reference (`shared`) | **Open** | [GPL-3.0-or-later](firmware/LICENSE) |
 | Enclosure designs (STL + Fusion source) | **Open** | [CC BY-SA 4.0](hardware/enclosure/LICENSE) |
 | Documentation | **Open** | [CC BY-SA 4.0](docs/LICENSE) |
-| Seismic data | **Open** | see [geoshake.org/open-data](https://geoshake.org/open-data) |
+| Seismic data | **Open** | [CC BY 4.0](data/LICENSE) |
 | PCB design / schematics | Proprietary | not published |
 | Cloud backend & network services | Proprietary | operated by us |
 
@@ -60,6 +61,7 @@ firmware/
   legacy/     Original DIY Arduino variants (LSM6DS3, unmaintained)
 hardware/
   enclosure/  STL meshes + Fusion 360 source + print/assembly docs
+data/         Seismic data licence (the data itself is served from the network)
 docs/         Documentation
 assets/       Images (logo & wave mark are trademarks — see assets/TRADEMARK-NOTICE.md)
 ```
@@ -103,10 +105,12 @@ Contributions require a DCO sign-off (`git commit -s`) — see
 | Firmware & software | [GPL-3.0-or-later](firmware/LICENSE) | `GPL-3.0-or-later` |
 | Enclosure designs | [CC BY-SA 4.0](hardware/enclosure/LICENSE) | `CC-BY-SA-4.0` |
 | Documentation & images | [CC BY-SA 4.0](docs/LICENSE) | `CC-BY-SA-4.0` |
+| Seismic data | [CC BY 4.0](data/LICENSE) | `CC-BY-4.0` |
 
-Both licenses are **share-alike**: if you distribute modified versions you
-must publish your modifications under the same license. Improvements flow
-back to everyone.
+The firmware and the enclosure designs are **share-alike**: if you
+distribute modified versions you must publish your modifications under the
+same license, so improvements flow back to everyone. The data is CC BY 4.0
+— attribution is all it asks.
 
 If you build products from these sources, please credit
 `Source: github.com/GeoShake/geoshake` — this is required attribution for
