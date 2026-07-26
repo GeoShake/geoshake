@@ -28,7 +28,7 @@ covered, not just its individual records.
 HOW TO CITE
 -----------
 
-   GeoShake Seismic Network, https://map.geoshake.org
+   GeoShake Seismic Network, https://geoshake.org
    (accessed YYYY-MM-DD), CC BY 4.0
 
 If you use the data in a publication we would like to hear about it:
@@ -96,7 +96,7 @@ SERVICE AVAILABILITY
 The data is openly licensed, but the services that deliver it are
 operated on a best-effort basis with no uptime guarantee. Endpoints may
 be rate-limited, changed or withdrawn. Heavy or automated use should go
-through https://geoshake.org/developer so we can keep the service usable
+through https://api.geoshake.org/developer so we can keep the service usable
 for everyone.
 
 Trademarks are not licensed by CC BY 4.0. See TRADEMARKS.md.

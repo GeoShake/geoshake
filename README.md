@@ -18,8 +18,8 @@ are placed in homes, offices and schools and contribute to a global seismic
 network with a mobile app, live station map and earthquake notifications.
 
 - 🛒 Ready-made devices & mobile app: [geoshake.org](https://geoshake.org)
-- 🗺️ Live station map: [geoshake.org](https://geoshake.org)
-- 📊 Seismic data & APIs: [geoshake.org/developer](https://geoshake.org/developer)
+- 🗺️ Live station map: [stations.geoshake.org](https://stations.geoshake.org) (legacy — new version in progress)
+- 📊 Seismic data & APIs: [api.geoshake.org/developer](https://api.geoshake.org/developer)
 
 ## What is open, and what is not
 
