@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please report security issues privately to **security@geoshake.org**
+Please report security issues privately to **info@geoshake.org**
 (or https://geoshake.org/contact if email is unavailable). Do **not**
 open a public GitHub issue for a security problem.
 
