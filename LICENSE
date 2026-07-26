@@ -1,0 +1,52 @@
+GeoShake — Licensing Overview
+=============================
+
+Copyright (c) 2024-2026 Appflows Teknoloji A.S.
+
+GeoShake ships open source firmware and open enclosure designs. Different
+parts of this repository use different licenses:
+
+1. FIRMWARE & SOFTWARE (everything under /firmware, including the
+   TypeScript DSP reference in /firmware/shared)
+   License: GNU General Public License v3.0 or later
+   SPDX-License-Identifier: GPL-3.0-or-later
+   Full text: firmware/LICENSE
+
+2. ENCLOSURE DESIGNS (everything under /hardware/enclosure: STL, STEP,
+   Fusion 360 sources, printing documentation)
+   License: Creative Commons Attribution-ShareAlike 4.0 International
+   SPDX-License-Identifier: CC-BY-SA-4.0
+   Full text: hardware/enclosure/LICENSE
+
+3. DOCUMENTATION & IMAGES (everything under /docs and /assets,
+   unless a file states otherwise)
+   License: Creative Commons Attribution-ShareAlike 4.0 International
+   SPDX-License-Identifier: CC-BY-SA-4.0
+   Full text: docs/LICENSE
+
+What this means in practice:
+- You may study, modify, build, distribute and sell devices based on the
+  firmware and enclosure designs, including commercially.
+- Both licenses are share-alike: if you distribute modified versions, you
+  must publish your modifications under the same license.
+- You must keep the copyright notices and license notices intact.
+
+NOT COVERED BY THESE LICENSES
+-----------------------------
+
+PCB design. The GeoShake T1 circuit board design, schematics and Gerber
+files are proprietary and are not published in this repository. The
+device as a whole is therefore not open source hardware.
+
+Network services. The GeoShake cloud, verification backend, station map,
+mobile app services and MQTT broker are operated by Appflows Teknoloji
+A.S. and are not covered by these licenses. Access to the official
+network requires credentials issued via
+https://geoshake.org/join-network.
+
+Trademarks. "GeoShake", the GeoShake logo and the wave device are
+trademarks of Appflows Teknoloji A.S. and are expressly excluded from
+the licenses above. See TRADEMARKS.md.
+
+Seismic data. GeoShake network data is published separately at
+https://geoshake.org/open-data under its own terms.

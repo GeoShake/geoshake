@@ -1,0 +1,8 @@
+{
+  "name": "@geoshake/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "vitest run", "build": "tsc -p tsconfig.json" },
+  "dependencies": { "zod": "^3.23.0" }
+}

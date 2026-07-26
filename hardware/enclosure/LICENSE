@@ -1,0 +1,41 @@
+GeoShake T1 enclosure designs
+=============================
+
+Copyright (c) 2024-2026 Appflows Teknoloji A.S.
+
+The enclosure designs in this directory (STL meshes, STEP files,
+Fusion 360 sources and the accompanying printing documentation) are
+licensed under:
+
+Creative Commons Attribution-ShareAlike 4.0 International
+(CC BY-SA 4.0)
+
+SPDX-License-Identifier: CC-BY-SA-4.0
+
+You are free to:
+  - Share — copy and redistribute the designs in any medium or format
+  - Adapt — remix, transform and build upon them, for any purpose,
+    including commercially
+
+Under the following terms:
+  - Attribution — you must give appropriate credit, provide a link to
+    this repository (https://github.com/GeoShake/geoshake) and indicate
+    if changes were made.
+  - ShareAlike — if you remix or build upon these designs, you must
+    distribute your contributions under the same license.
+
+Full legal text:
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+Human-readable summary:
+https://creativecommons.org/licenses/by-sa/4.0/
+
+TRADEMARKS ARE NOT LICENSED. The GeoShake name, the GeoShake logo and
+the wave device are trademarks of Appflows Teknoloji A.S. The published
+top shell is the production geometry with the engraved wordmark removed;
+you may not add the GeoShake name or logo to enclosures you produce.
+See TRADEMARKS.md in the repository root.
+
+NOTE ON SCOPE: this license covers the enclosure only. The GeoShake T1
+PCB design is proprietary and is not published. The device as a whole is
+therefore not open source hardware.

@@ -1,0 +1,45 @@
+# Target sabitle: uretilen sdkconfig gitignore'da → fresh clone / sdkconfig silinince
+# regen target'i BURADAN okur. Yoksa default 'esp32' → ECDSA → RSA imza reddi → build FAIL (detour kaniti).
+CONFIG_IDF_TARGET="esp32s3"
+
+# Konsol/log USB-Serial-JTAG'a gider; UART0 binary veri akisina ayrilir (S3)
+# (Klasik ESP32 target'inda bu sembol yok, sessizce yok sayilir)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# --- OTA (Faz 1 artiklari) ---
+# Flash 16MB (cip gercek boyutu; default 2MB cift-OTA partition'a yetmez)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# Cift-OTA partition tablosu
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Bozuk guncellemeden rollback
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# Imzali app dogrulama (secure boot eFuse YOK). ESP32-S3 = Secure Boot V2 RSA-3072
+# (ECDSA V2 yalniz ESP32-C2). OTA image imzasi guncellemede dogrulanir.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+# M1 (guvenlik): imza anahtari repo AGACI DISINDA (~/.geoshake/) → hicbir repo-sync (rsync/git)
+# suepuremez; deploy.sh exclude'una bagimli kalinmaz (C1'in kalici cozumu). Absolute path (bu makine);
+# anahtar dosyasi ne commit ne rsync edilir. Baska makinede build: bu yolu kendi ~/.geoshake'ine cevir.
+CONFIG_SECURE_BOOT_SIGNING_KEY="/Users/huseyintamer/.geoshake/ota_signing_key.pem"
+# Plain HTTP OTA'ya izin ver (imza butunlugu sagliyor; TLS prototipte gereksiz)
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# --- N1 captive portal: modern tarayici istek-header blogu (Accept/User-Agent/
+# Accept-Language/...) varsayilan 512 byte'i asar → "header fields too long".
+# 2048'e cikar (captive form POST'u icin yeterli; provisioning aninda gecici httpd). ---
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+
+# --- N2e captive oto-acilma: httpd max_open_sockets=13 (ESP-IDF captive_portal degeri).
+# httpd +3 internal soket → 13+3=16 → LWIP havuzunu (16) TAM DOLDURUR (bos marj YOK; default 10
+# yetmez → httpd_start FAIL). DNS(+1) + in-place MQTT(+1) LRU-purge + graceful-degrade ile tolere. ---
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# --- BLEPROV: BLE provisioning (mobil app kurulumu; bleprov.c) ---
+# NimBLE host (Bluedroid'den kucuk; yalniz peripheral-adv + protocomm GATT gerek).
+# wifi_prov_mgr scheme_ble bunlari ister; S3'te BT controller + coex otomatik gelir.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# Tek prov oturumu yeter — RAM kis (default 3 baglanti ~x KB host belegi).
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
