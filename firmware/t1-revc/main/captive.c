@@ -129,7 +129,7 @@ static esp_err_t get_root(httpd_req_t *req) {
 static esp_err_t post_save(httpd_req_t *req) {
     int total = req->content_len;
     if (total <= 0 || total > GS_BODY_MAX) {
-        ESP_LOGW(TAG, "POST /save gecersiz content_len=%d", total);
+        ESP_LOGW(TAG, "POST /save invalid content_len=%d", total);
         return send_form(req, "Gecersiz istek (govde boyutu).");
     }
 
@@ -142,7 +142,7 @@ static esp_err_t post_save(httpd_req_t *req) {
             /* Sinirli yeniden dene: stall eden client (Content-Length verip govde gondermeyen)
                tek-thread httpd task'ini suresiz kilitlemesin -> ~5 ardisik timeout sonra birak. */
             if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 5) continue;
-            ESP_LOGW(TAG, "POST /save govde okuma hatasi/timeout (%d)", r);
+            ESP_LOGW(TAG, "POST /save body read error/timeout (%d)", r);
             return ESP_FAIL;
         }
         timeouts = 0;
@@ -170,7 +170,7 @@ static esp_err_t post_save(httpd_req_t *req) {
         return send_form(req, "Could not save settings. Please try again.");
     }
     /* ssid sir degil; wifi_pass LOGLANMAZ. */
-    ESP_LOGI(TAG, "WiFi kaydedildi: ssid=%s (parola loglanmaz) — yeniden baslatiliyor", wifi_ssid);
+    ESP_LOGI(TAG, "WiFi saved: ssid=%s (password not logged) - rebooting", wifi_ssid);
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_sendstr(req, SUCCESS_HTML);
@@ -189,7 +189,7 @@ static void softap_bringup(void) {
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
     if (ap_netif == NULL) {
         /* AP netif yok -> DHCP yapilandirilmaz, client IP alamaz, portal erisilemez. */
-        ESP_LOGE(TAG, "esp_netif_create_default_wifi_ap NULL (OOM?) — yeniden baslatiliyor");
+        ESP_LOGE(TAG, "esp_netif_create_default_wifi_ap NULL (OOM?) - rebooting");
         esp_restart();
     }
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
@@ -197,7 +197,7 @@ static void softap_bringup(void) {
     uint8_t mac[6] = {0};
     esp_err_t me = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);   /* efuse'tan; SSID benzersizligi icin son 2 bayt */
     if (me != ESP_OK)   /* basarisizsa mac {0} kalir -> GeoShake-0000 fallback (loglanir) */
-        ESP_LOGW(TAG, "esp_read_mac FAIL: %s — SSID 0000 fallback", esp_err_to_name(me));
+        ESP_LOGW(TAG, "esp_read_mac FAIL: %s - falling back to SSID 0000", esp_err_to_name(me));
 
     wifi_config_t ap = { 0 };
     int n = snprintf((char *)ap.ap.ssid, sizeof(ap.ap.ssid), "GeoShake-%02X%02X", mac[4], mac[5]);
@@ -209,7 +209,7 @@ static void softap_bringup(void) {
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "SoftAP acik: SSID=%s (acik ag) IP=192.168.4.1", (char *)ap.ap.ssid);
+    ESP_LOGI(TAG, "SoftAP up: SSID=%s (open network) IP=192.168.4.1", (char *)ap.ap.ssid);
 }
 
 /* Boot varyanti (mevcut davranis AYNEN): wifi henuz init DEGIL -> netif + event loop + wifi_init
@@ -250,7 +250,7 @@ static void start_webserver(void) {
     esp_err_t e = httpd_start(&s_server, &config);
     if (e != ESP_OK) {
         /* HTTP yoksa SoftAP acik ama portal yanitsiz -> cihaz unprovisionable. Yeniden dene. */
-        ESP_LOGE(TAG, "httpd_start FAIL: %s — yeniden baslatiliyor", esp_err_to_name(e));
+        ESP_LOGE(TAG, "httpd_start FAIL: %s - rebooting", esp_err_to_name(e));
         esp_restart();
     }
     httpd_uri_t u_root = { .uri = "/",     .method = HTTP_GET,  .handler = get_root,  .user_ctx = NULL };
@@ -262,17 +262,17 @@ static void start_webserver(void) {
     dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
     s_dns = start_dns_server(&dns_cfg);
     if (s_dns == NULL)
-        ESP_LOGE(TAG, "start_dns_server FAIL — portal yalniz ELLE (192.168.4.1) erisilir");
+        ESP_LOGE(TAG, "start_dns_server FAIL - portal reachable only MANUALLY (192.168.4.1)");
     else
-        ESP_LOGI(TAG, "DNS hijack aktif: tum sorgu→192.168.4.1 (CPD oto-acilma)");
-    ESP_LOGI(TAG, "HTTP portal hazir: http://192.168.4.1/ (GET / form, POST /save)");
+        ESP_LOGI(TAG, "DNS hijack active: all queries -> 192.168.4.1 (CPD auto-open)");
+    ESP_LOGI(TAG, "HTTP portal ready: http://192.168.4.1/ (GET / form, POST /save)");
 }
 
 void gs_captive_start(void) {
-    ESP_LOGW(TAG, "Captive portal modu — provisioning bekleniyor (sensor/mqtt/STA baslatilmadi)");
+    ESP_LOGW(TAG, "Captive portal mode - waiting for provisioning (sensors/mqtt/STA not started)");
     softap_start();
     start_webserver();
-    ESP_LOGI(TAG, "Kurulum: 'GeoShake-XXXX' agina baglan; telefon kurulum sayfasini OTOMATIK acar "
+    ESP_LOGI(TAG, "Setup: join the 'GeoShake-XXXX' network; your phone opens the setup page AUTOMATICALLY "
                   "(DNS hijack + 302 aktif). Elle: http://192.168.4.1");
     ESP_LOGI(TAG, "captive heap=%lu", (unsigned long)esp_get_free_heap_size());
     /* BLEPROV: artik NON-BLOCKING — SoftAP + httpd kendi task'larinda yasar; cagiran (app_main)
@@ -283,11 +283,11 @@ void gs_captive_start(void) {
    STA'yi durdur (init korunur) -> AP+captive. Cagiran (wifi_guard_task) s_captive_fallback'i
    ONCE set etmeli ki esp_wifi_stop'un DISCONNECTED'i reconnect tetiklemesin. */
 void gs_captive_start_inplace(void) {
-    ESP_LOGW(TAG, "WiFi 60sn baglanamadi — yerinde captive (STA->AP, reboot yok; creds korunur)");
+    ESP_LOGW(TAG, "WiFi did not connect in 60 s - in-place captive (STA->AP, no reboot; creds preserved)");
     ESP_ERROR_CHECK(esp_wifi_stop());   /* STA durur; esp_wifi_init korunur */
     softap_bringup();                   /* AP netif + mode(AP) + config + start */
     start_webserver();
-    ESP_LOGI(TAG, "Kurtarma portali: 'GeoShake-XXXX' agina baglan; telefon portali oto-acar. Elle: http://192.168.4.1");
+    ESP_LOGI(TAG, "Recovery portal: join the 'GeoShake-XXXX' network; your phone opens it automatically. Manually: http://192.168.4.1");
     ESP_LOGI(TAG, "inplace-captive heap=%lu", (unsigned long)esp_get_free_heap_size());
     /* BLEPROV: NON-BLOCKING — cagiran (wifi_guard_task) BLE prov'u acip kendisi bekler. */
 }

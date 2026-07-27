@@ -65,7 +65,7 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     (void)arg; (void)base;
     switch (id) {
     case WIFI_PROV_START:
-        ESP_LOGI(TAG, "BLE provisioning basladi (adv: %s...)", GS_BLE_NAME_PREFIX);
+        ESP_LOGI(TAG, "BLE provisioning started (adv: %s...)", GS_BLE_NAME_PREFIX);
         break;
     case WIFI_PROV_CRED_RECV: {
         const wifi_sta_config_t *c = (const wifi_sta_config_t *)data;
@@ -75,12 +75,12 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         if (pl >= sizeof(s_pass)) pl = sizeof(s_pass) - 1;
         memcpy(s_ssid, c->ssid, sl); s_ssid[sl] = '\0';
         memcpy(s_pass, c->password, pl); s_pass[pl] = '\0';
-        ESP_LOGI(TAG, "cred alindi: ssid=%s (parola loglanmaz) — baglanti deneniyor", s_ssid);
+        ESP_LOGI(TAG, "credentials received: ssid=%s (password not logged) - trying to connect", s_ssid);
         break;
     }
     case WIFI_PROV_CRED_FAIL: {
         const wifi_prov_sta_fail_reason_t *r = (const wifi_prov_sta_fail_reason_t *)data;
-        ESP_LOGW(TAG, "baglanti FAIL: %s — app tekrar deneyebilir (NVS'e yazilmadi)",
+        ESP_LOGW(TAG, "connect FAIL: %s - the app may retry (nothing written to NVS)",
                  (r && *r == WIFI_PROV_STA_AUTH_ERROR) ? "yanlis sifre (auth)" : "AP bulunamadi");
         /* Resetle ki app yeni cred gonderebilsin (yoksa mgr 'failed' durumunda takili kalir). */
         wifi_prov_mgr_reset_sm_state_on_failure();
@@ -91,7 +91,7 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         esp_err_t e = gs_identity_save_wifi(s_ssid, s_pass);
         if (e == ESP_OK) {
             s_saved = true;
-            ESP_LOGW(TAG, "WiFi dogrulandi + kaydedildi (ssid=%s) — app onayi sonrasi reboot", s_ssid);
+            ESP_LOGW(TAG, "WiFi verified + saved (ssid=%s) - reboot after the app confirms", s_ssid);
         } else {
             /* Yazilamadi: restart ETME (yeniden ayni captive/BLE dalina doner, kullanici tekrar dener). */
             ESP_LOGE(TAG, "gs_identity_save_wifi FAIL: %s", esp_err_to_name(e));
@@ -100,11 +100,11 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
     case WIFI_PROV_END:
         if (s_saved) {
-            ESP_LOGW(TAG, "provisioning bitti — normal boot icin yeniden baslatiliyor");
+            ESP_LOGW(TAG, "provisioning done - rebooting for a normal boot");
             vTaskDelay(pdMS_TO_TICKS(500));   /* son BLE bildirimi + log flush */
             esp_restart();
         }
-        ESP_LOGI(TAG, "provisioning oturumu bitti (kayit yok) — portal/BLE beklemede");
+        ESP_LOGI(TAG, "provisioning session ended (nothing saved) - portal/BLE still waiting");
         break;
     default:
         break;
@@ -120,7 +120,7 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
        olusturmustu -> ikinci olusum crash olur; esp_netif_get_handle ile guard.) */
     if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
         if (esp_netif_create_default_wifi_sta() == NULL) {
-            ESP_LOGE(TAG, "STA netif olusturulamadi (OOM?) — BLE prov ATLANIYOR (captive calisir)");
+            ESP_LOGE(TAG, "could not create STA netif (OOM?) - SKIPPING BLE prov (captive still works)");
             return ESP_FAIL;
         }
     }
@@ -128,7 +128,7 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
        aninda mgr modu degistirirse AP duser — o an zaten kurulum bitiyor, kabul.) */
     esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (e != ESP_OK) {
-        ESP_LOGE(TAG, "APSTA gecisi FAIL: %s — BLE prov ATLANIYOR", esp_err_to_name(e));
+        ESP_LOGE(TAG, "APSTA switch FAIL: %s - SKIPPING BLE prov", esp_err_to_name(e));
         return e;
     }
 
@@ -142,7 +142,7 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
     };
     e = wifi_prov_mgr_init(cfg);
     if (e != ESP_OK) {
-        ESP_LOGE(TAG, "wifi_prov_mgr_init FAIL: %s — BLE prov yok (captive calisir)", esp_err_to_name(e));
+        ESP_LOGE(TAG, "wifi_prov_mgr_init FAIL: %s - no BLE prov (captive still works)", esp_err_to_name(e));
         return e;
     }
 
@@ -162,12 +162,12 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
     e = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, (const void *)GS_BLE_POP,
                                          service_name, NULL);
     if (e != ESP_OK) {
-        ESP_LOGE(TAG, "start_provisioning FAIL: %s — BLE prov yok (captive calisir)", esp_err_to_name(e));
+        ESP_LOGE(TAG, "start_provisioning FAIL: %s - no BLE prov (captive still works)", esp_err_to_name(e));
         wifi_prov_mgr_deinit();
         return e;
     }
     wifi_prov_mgr_endpoint_register("gs-info", gs_info_handler, NULL);
 
-    ESP_LOGI(TAG, "BLE kurulum hazir: adv=%s security1 (+captive portal ayni anda)", service_name);
+    ESP_LOGI(TAG, "BLE setup ready: adv=%s security1 (captive portal also up)", service_name);
     return ESP_OK;
 }

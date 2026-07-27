@@ -179,7 +179,7 @@ static void stalta_init(stalta_t *s) {
     memset(s, 0, sizeof(*s)); s->lta = STALTA_LTA_MIN; s->armed = true;
 }
 
-/* Boot golden: shared stalta.test.ts "4 sensör FARKLI" golden'ı ile uyuşmalı.
+/* Boot golden: shared stalta.test.ts "4 sensors DIFFER" golden'ı ile uyuşmalı.
    12-eleman girdi → ortalama op-order + recurrence BİRLİKTE kilitlenir (review #1).
    Değerler stalta.test.ts'teki kilitli literal'lerle AYNI — TS değişirse ikisini de güncelle. */
 static bool golden_stalta_check(void) {
@@ -194,8 +194,8 @@ static bool golden_stalta_check(void) {
     bool ok = fabs(s.sta - 0.00003883608158025049) < 1e-12 &&
               fabs(s.lta - 6.74217320754769e-7) < 1e-12 &&
               fabs(o.ratio - 57.60172630506509) < 1e-6;
-    if (ok) ESP_LOGI(TAG, "golden STA/LTA OK — C/TS uyumlu");
-    else ESP_LOGE(TAG, "golden STA/LTA FAIL — sta=%.12f lta=%.12f ratio=%.6f", s.sta, s.lta, o.ratio);
+    if (ok) ESP_LOGI(TAG, "golden STA/LTA OK - C matches the TS reference");
+    else ESP_LOGE(TAG, "golden STA/LTA FAIL - sta=%.12f lta=%.12f ratio=%.6f", s.sta, s.lta, o.ratio);
     return ok;
 }
 
@@ -216,9 +216,9 @@ static bool golden_check(void) {
               fabsf(f2.rms[0]-0.0223607f)<1e-4f && fabsf(f2.rms[1]-0.0282843f)<1e-4f &&
               fabsf(f2.rms[2]-0.0141421f)<1e-4f && fabsf(f2.pga-0.05f)<1e-4f;
     if (ok)
-        ESP_LOGI(TAG, "golden OK — ozellik hesabi shared (TS) ile uyumlu");
+        ESP_LOGI(TAG, "golden OK - feature maths matches shared (TS)");
     else
-        ESP_LOGE(TAG, "golden FAIL — C/TS UYUSMUYOR! f1=%.5f,%.5f,%.5f/%.5f f2=%.5f,%.5f,%.5f/%.5f",
+        ESP_LOGE(TAG, "golden FAIL - C/TS MISMATCH! f1=%.5f,%.5f,%.5f/%.5f f2=%.5f,%.5f,%.5f/%.5f",
                  f1.rms[0],f1.rms[1],f1.rms[2],f1.pga, f2.rms[0],f2.rms[1],f2.rms[2],f2.pga);
     return ok;
 }
@@ -255,9 +255,9 @@ static bool golden_frame_check(void) {
     encode_frame(b, 1234567, 987654321098ULL, s);
     bool ok = (memcmp(b, G, FRAME_LEN) == 0);
     if (ok)
-        ESP_LOGI(TAG, "golden FRAME OK — .gsd formati Lab ile uyumlu");
+        ESP_LOGI(TAG, "golden FRAME OK - .gsd format matches Lab");
     else
-        ESP_LOGE(TAG, "golden FRAME FAIL — C encoder Lab formatiyla UYUSMUYOR");
+        ESP_LOGE(TAG, "golden FRAME FAIL - C encoder does NOT match the Lab format");
     return ok;
 }
 
@@ -365,9 +365,9 @@ static void sample_task(void *arg) {
     if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)) == 0) {
         for (int i = 0; i < 4; i++) read_accel(i, acc[i]);
         if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)) == 0)
-            ESP_LOGE(TAG, "DRDY YOK — GPIO%d / IMU1 INT1 hattini kontrol et", PIN_DRDY);
+            ESP_LOGE(TAG, "DRDY MISSING - check GPIO%d / IMU1 INT1 line", PIN_DRDY);
         else
-            ESP_LOGI(TAG, "DRDY OK (primer okumayla)");
+            ESP_LOGI(TAG, "DRDY OK (via primer read)");
     } else {
         ESP_LOGI(TAG, "DRDY OK");
     }
@@ -419,7 +419,7 @@ static void sample_task(void *arg) {
                     "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"sta_lta\":%.3f,\"pga\":%.6f}",
                     g_id.device_id, (unsigned long)used_seq, (long long)ep_ms, det.ratio, det.pga);
                 esp_mqtt_client_publish(s_mqtt, g_topic_trig, tb, len, 1, 0);
-                ESP_LOGW(TAG, "TETIK! ratio=%.2f pga=%.4f t_ms=%lld", det.ratio, det.pga, (long long)ep_ms);
+                ESP_LOGW(TAG, "TRIGGER! ratio=%.2f pga=%.4f t_ms=%lld", det.ratio, det.pga, (long long)ep_ms);
                 s_trig_flash_ms = esp_timer_get_time() / 1000;  /* led_task ile AYNI monotonic taban → burst ~LED_BURST_MS sonra soner (epoch-ms degil) */
                 if (!wave_on) {   /* olay-öncesi ring'i wave_buf'a kronolojik kopyala */
                     wave_n = 0;
@@ -447,7 +447,7 @@ static void sample_task(void *arg) {
                     if (s_mqtt_up)
                         esp_mqtt_client_publish(s_mqtt, wt, (const char *)&s_wave_buf[o * FRAME_LEN], cnt * FRAME_LEN, 1, 0);
                 }
-                ESP_LOGW(TAG, "WAVE #%lu yayinlandi: %d frame", (unsigned long)wave_seq, wave_n);
+                ESP_LOGW(TAG, "WAVE #%lu published: %d frames", (unsigned long)wave_seq, wave_n);
                 wave_on = false;
             }
         }
@@ -460,7 +460,7 @@ static void sample_task(void *arg) {
             if (req < 0) { sci_on = false; }
             else if (req == 0) { sci_on = true; sci_deadline = 0; }
             else { int v = req > 300 ? 300 : req; sci_on = true; sci_deadline = now + (int64_t)v * 1000000; }
-            ESP_LOGI(TAG, "science %s", !sci_on ? "KAPALI" : (sci_deadline ? "ACIK (sureli)" : "ACIK (suresiz)"));
+            ESP_LOGI(TAG, "science %s", !sci_on ? "KAPALI" : (sci_deadline ? "ACIK (sureli)" : "ON (unbounded)"));
         }
 
         /* ---- CAL-T4: oto-durgun relative-gain olcumu (sci idiom: mqtt_event bayrak postalar) ----
@@ -483,7 +483,7 @@ static void sample_task(void *arg) {
                    bol pay) REDDET: eski gain korunur, sample_task normal akisa doner (hang YOK). */
                 if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) == 0) {
                     if (++stalls >= 3) {
-                        ESP_LOGW(TAG, "cal reddedildi: DRDY yok/zaman asimi — eski gain korunuyor");
+                        ESP_LOGW(TAG, "cal rejected: no DRDY / timeout - keeping previous gain");
                         reject = true; break;
                     }
                     continue;      /* tek kacirilan kenar; tekrar bekle */
@@ -514,12 +514,12 @@ static void sample_task(void *arg) {
                     /* 1) olu/kopuk sensör ONCE: dinlenmede saglikli sensör ~1g okur, kopuk ~0.
                        Once bunu bak — olu sensörun CV'si anlamsizdir (yoksa "hareketli" yanlis raporlanir). */
                     if (mn < (double)CAL_MIN_MAG) {
-                        ESP_LOGW(TAG, "cal reddedildi: sensor %d olu/kopuk", i);
+                        ESP_LOGW(TAG, "cal rejected: sensor %d dead/disconnected", i);
                         reject = true; break;
                     }
                     /* 2) durgun mu? CV^2 testi: var > tol*mean^2 -> cihaz hareketli (hangi sensör + cv2 logla) */
                     if (var > (double)CAL_STILL_TOL * mn * mn) {
-                        ESP_LOGW(TAG, "cal reddedildi: sensor %d hareketli (cv2=%.4f > %.4f; cihazi sabit tut)",
+                        ESP_LOGW(TAG, "cal rejected: sensor %d is moving (cv2=%.4f > %.4f; keep the device still)",
                                  i, var / (mn * mn), (double)CAL_STILL_TOL);
                         reject = true; break;
                     }
@@ -532,7 +532,7 @@ static void sample_task(void *arg) {
                 /* 3) gain aralik disi -> donanim arizasi (birim varyansi <%1); sessiz clamp DEGIL, reddet */
                 for (int i = 0; i < 4; i++)
                     if (gain[i] < CAL_GAIN_MIN || gain[i] > CAL_GAIN_MAX) {
-                        ESP_LOGW(TAG, "cal reddedildi: gain[%d]=%.3f aralik disi (ariza?)", i, gain[i]);
+                        ESP_LOGW(TAG, "cal rejected: gain[%d]=%.3f out of range (faulty?)", i, gain[i]);
                         reject = true; break;
                     }
             }
@@ -543,7 +543,7 @@ static void sample_task(void *arg) {
                     ESP_LOGI(TAG, "cal OK: gain=[%.3f %.3f %.3f %.3f]",
                              gain[0], gain[1], gain[2], gain[3]);
                 } else {
-                    ESP_LOGE(TAG, "cal kaydedilemedi (e=%s) — eski gain korunuyor",
+                    ESP_LOGE(TAG, "cal could not be saved (e=%s) - keeping previous gain",
                              esp_err_to_name(ce));
                 }
             }
@@ -574,7 +574,7 @@ static void sample_task(void *arg) {
                                         (const char *)s_sci_buf, sci_off, 0, 0);
             sci_off = 0;
             prev_sci = false;
-            ESP_LOGI(TAG, "science session bitti (%lu frame, %lu dusen)",
+            ESP_LOGI(TAG, "science session ended (%lu frames, %lu dropped)",
                      (unsigned long)sci_fseq, (unsigned long)sci_dropped);
         }
         if (n == 0) win_start = now;
@@ -625,7 +625,7 @@ static void sensors_init(void) {
         };
         ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev, &s_dev[i]));
         uint8_t who = read_reg(i, REG_WHO_AM_I);
-        if (who != WHO_AM_I_VAL) { ESP_LOGE(TAG, "sensor %d yok (0x%02X)", i, who); return; }
+        if (who != WHO_AM_I_VAL) { ESP_LOGE(TAG, "sensor %d not found (0x%02X)", i, who); return; }
         write_reg(i, REG_CTRL3_C, 0x44);   /* BDU=1, IF_INC=1 */
         write_reg(i, REG_CTRL2_G, 0x00);   /* gyro kapali */
         write_reg(i, REG_CTRL9_XL, 0xE2);  /* I3C disable */
@@ -666,11 +666,11 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 static void wifi_guard_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(WIFI_FALLBACK_TIMEOUT_MS));
     if (s_wifi_ever_up) {
-        ESP_LOGI(TAG, "WiFi baglandi — guard cikiyor (fallback gerekmedi)");
+        ESP_LOGI(TAG, "WiFi connected - guard exiting (no fallback needed)");
         vTaskDelete(NULL);
         return;
     }
-    ESP_LOGW(TAG, "WiFi %d sn baglanamadi — yerinde captive fallback", WIFI_FALLBACK_TIMEOUT_MS / 1000);
+    ESP_LOGW(TAG, "WiFi did not connect in %d s - in-place captive fallback", WIFI_FALLBACK_TIMEOUT_MS / 1000);
     s_captive_fallback = true;          /* esp_wifi_stop ONCESI: DISCONNECTED reconnect denemesin */
     gs_captive_start_inplace();          /* BLEPROV: artik noblock — portal acilir, doner */
     gs_bleprov_start(&g_id);             /* BLE kurulum da acik (app kurtarma yolu); fail -> yalniz captive */
@@ -691,7 +691,7 @@ static void wifi_start(void) {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "WiFi baslatildi, SSID=%s", g_id.wifi_ssid);
+    ESP_LOGI(TAG, "WiFi started, SSID=%s", g_id.wifi_ssid);
 
     /* Sabit sunucu (pool.ntp.org); DHCP'den NTP alma KAPALI — o ozellik
        CONFIG_LWIP_DHCP_GET_NTP_SRV gerektirir, gereksiz. Default config start=true. */
@@ -728,13 +728,13 @@ static volatile bool s_ota_busy = false;
 
 static void ota_task(void *arg) {
     char *url = (char *)arg;
-    ESP_LOGW(TAG, "OTA basliyor: %s", url);
+    ESP_LOGW(TAG, "OTA starting: %s", url);
     s_sci_req = -1;  /* science'i durdur (bant cakismasin) */
     esp_http_client_config_t http = { .url = url, .timeout_ms = 30000, .keep_alive_enable = true };
     esp_https_ota_config_t cfg = { .http_config = &http };
     esp_err_t e = esp_https_ota(&cfg);  /* imza CONFIG_SECURE_SIGNED_ON_UPDATE ile dogrulanir */
-    if (e == ESP_OK) { ESP_LOGW(TAG, "OTA OK — reboot"); esp_restart(); }
-    ESP_LOGE(TAG, "OTA FAIL: %s — mevcut app'te kaliniyor (science durduruldu, "
+    if (e == ESP_OK) { ESP_LOGW(TAG, "OTA OK - rebooting"); esp_restart(); }
+    ESP_LOGE(TAG, "OTA FAIL: %s - staying on the current app (science stopped, "
              "gerekirse tekrar baslat)", esp_err_to_name(e));  /* I1 */
     free(url);
     s_ota_busy = false;
@@ -747,7 +747,7 @@ static void mqtt_event(void *args, esp_event_base_t base, int32_t id, void *data
     if (id == MQTT_EVENT_CONNECTED) {
         s_mqtt_up = true;
         esp_mqtt_client_subscribe(s_mqtt, g_topic_cmd, 0);
-        ESP_LOGI(TAG, "MQTT baglandi: %s (cmd subscribe)", MQTT_BROKER);
+        ESP_LOGI(TAG, "MQTT connected: %s (cmd subscribe)", MQTT_BROKER);
     } else if (id == MQTT_EVENT_DISCONNECTED) {
         if (s_mqtt_up) s_mqtt_rc++;
         s_mqtt_up = false;
@@ -778,7 +778,7 @@ static void mqtt_event(void *args, esp_event_base_t base, int32_t id, void *data
                     bool ok = ul >= 8 && ul < 256 &&
                               (strncmp(us, "http://", 7) == 0 || strncmp(us, "https://", 8) == 0);
                     if (!ok) {
-                        ESP_LOGW(TAG, "OTA url reddedildi (http(s):// degil / uzunluk)");
+                        ESP_LOGW(TAG, "OTA url rejected (not http(s):// or bad length)");
                     } else {
                         s_ota_busy = true;
                         char *u = strdup(us);   /* ota_task free eder */
@@ -792,7 +792,7 @@ static void mqtt_event(void *args, esp_event_base_t base, int32_t id, void *data
                    factory-wait'e duser (admin USB ile MQTT NVS yazana kadar bekler; captive ACILMAZ).
                    Parametresiz; cihazi fabrikaya dondurur (panel N3 window.confirm sorar). */
                 gs_identity_erase();
-                ESP_LOGW(TAG, "Kimlik silindi (reset-id, TAM) — yeniden baslatiliyor (factory-wait; admin USB)");
+                ESP_LOGW(TAG, "Identity erased (reset-id, FULL) - rebooting (factory-wait; admin USB)");
                 vTaskDelay(pdMS_TO_TICKS(500));   /* log flush + mqtt ack icin kisa gecikme */
                 esp_restart();
             } else if (cJSON_IsString(cmd) && strcmp(cmd->valuestring, "reset-wifi") == 0) {
@@ -800,14 +800,14 @@ static void mqtt_event(void *args, esp_event_base_t base, int32_t id, void *data
                    (admin esptool ile gomdu) korunur. Boot'ta mqtt_ready && !wifi_ready -> captive
                    portal (musteri WiFi'yi yeniden girer). Cihaz fabrikaya DONMEZ. */
                 gs_identity_erase_wifi();
-                ESP_LOGW(TAG, "WiFi silindi (reset-wifi) — yeniden baslatiliyor (captive; MQTT korunur)");
+                ESP_LOGW(TAG, "WiFi erased (reset-wifi) - rebooting (captive; MQTT preserved)");
                 vTaskDelay(pdMS_TO_TICKS(500));   /* log flush + mqtt ack icin kisa gecikme */
                 esp_restart();
             } else if (cJSON_IsString(cmd) && strcmp(cmd->valuestring, "cal") == 0) {
                 /* CAL-T4: oto-durgun kalibrasyon. Parametresiz — payload "action" alani (varsa)
                    yok sayilir (tek mod). sample_task (core1) tuketir; sci idiom (tek sahip, yaris yok). */
                 s_cal_req = true;
-                ESP_LOGI(TAG, "cmd: cal (oto-durgun kalibrasyon)");
+                ESP_LOGI(TAG, "cmd: cal (auto still-state calibration)");
             }
             cJSON_Delete(j);
         }
@@ -883,7 +883,7 @@ static void mqtt_start(void) {
     s_mqtt = esp_mqtt_client_init(&cfg);
     esp_mqtt_client_register_event(s_mqtt, ESP_EVENT_ANY_ID, mqtt_event, NULL);
     esp_err_t e = esp_mqtt_client_start(s_mqtt);
-    ESP_LOGI(TAG, "mqtt_start: broker=%s sonuc=%s", MQTT_BROKER, esp_err_to_name(e));
+    ESP_LOGI(TAG, "mqtt_start: broker=%s result=%s", MQTT_BROKER, esp_err_to_name(e));
 }
 
 /* SNTP synced ise gercek epoch ms, degilse 0 (shared sema 0'i kabul eder) */
@@ -908,13 +908,24 @@ static void mqtt_task(void *arg) {
         do { seq = s_feat_seq; f = s_last_feat; n = s_last_n; fs = s_last_fs; }
         while (seq != s_feat_seq);
         if (seq != last_feat && n > 0) {
-            last_feat = seq;
-            int len = snprintf(buf, sizeof(buf),
-                "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"fs\":%.2f,\"n\":%d,"
-                "\"rms\":[%.6f,%.6f,%.6f],\"pga\":%.6f}",
-                g_id.device_id, (unsigned long)pubseq++, (long long)now_ms(), fs, n,
-                f.rms[0], f.rms[1], f.rms[2], f.pga);
-            esp_mqtt_client_publish(s_mqtt, g_topic_feat, buf, len, 0, 0);
+            last_feat = seq;   /* saat yoksa da ilerlet: pencereyi ATLA, sonra bayat yayinlama */
+            /* 0.9.3: SAAT YOKSA YAYINLAMA. now_ms() SNTP oturmadan 0 doner ve MQTT,
+               SNTP'den ONCE baglanabiliyor -> o pencerede giden feat'ler t_ms=0 tasiyordu.
+               Tetik yayini bunu zaten suzuyordu (asagida ep_ms > 0); feat suzmuyordu ->
+               kayitlar SeedLink ring'ine 1970-01-01 damgasiyla dusup KALICI epoch-zero
+               stream'i yaratti (saha: GS_FVYSA_00_L_N_Z). Feeder tarafinda da suzgec var
+               (MIN_EPOCH_MS) ama dogru yer kaynak: bozuk damga cihazdan hic cikmasin.
+               health BILINCLI olarak korunmuyor — saat yokken bile cihaz gorunur kalmali
+               (fw/up_s/heap/rssi teshis icin gerekir; t_ms=0 orada "saat yok" sinyalidir). */
+            int64_t ep = now_ms();
+            if (ep > 0) {
+                int len = snprintf(buf, sizeof(buf),
+                    "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"fs\":%.2f,\"n\":%d,"
+                    "\"rms\":[%.6f,%.6f,%.6f],\"pga\":%.6f}",
+                    g_id.device_id, (unsigned long)pubseq++, (long long)ep, fs, n,
+                    f.rms[0], f.rms[1], f.rms[2], f.pga);
+                esp_mqtt_client_publish(s_mqtt, g_topic_feat, buf, len, 0, 0);
+            }
         }
 
         /* 30 s'de bir health */
@@ -942,12 +953,12 @@ static void selftest_task(void *arg) {
     for (int i = 0; i < 30; i++) {
         if (s_wifi_up && s_mqtt_up) {
             esp_ota_mark_app_valid_cancel_rollback();
-            ESP_LOGW(TAG, "OTA self-test GECTI — app gecerli isaretlendi");
+            ESP_LOGW(TAG, "OTA self-test PASSED - app marked valid");
             vTaskDelete(NULL);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    ESP_LOGE(TAG, "OTA self-test GECMEDI — rollback + reboot");
+    ESP_LOGE(TAG, "OTA self-test FAILED - rollback + reboot");
     esp_ota_mark_app_invalid_rollback_and_reboot();  /* eski app'e doner */
 }
 
@@ -981,6 +992,53 @@ static void led_init(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&c));
     ESP_LOGI(TAG, "LED init OK (GPIO%d, LEDC 5kHz 13-bit)", PIN_LED);
+}
+
+/* ---- Bekleme modu desenleri (app_main'in DORT bekleme dali) ----
+   Gerekce: bu dallarda normal boot'un led_init/led_task'ina hic gelinmiyor; GPIO39
+   SURULMEZSE LED sabit YANIK kalir ve musteri bunu "cihaz bozuk" diye okur
+   (saha: GEO-BH2JN, 2026-07-25). Uygulama uc dilde "isigin yanip sondugunden emin
+   ol" diyor — dogru olan metin, cihazdi yanlis olan (karar: 2026-07-27).
+
+   Desenler AYIRT EDILEBILIR, ama musterinin gordugu her bekleme durumu "yanip
+   sonuyor" olarak okunur — app metni her kosulda dogru kalir. Kasitli olarak
+   NABIZ (yumusak nefes) KULLANILMADI: o desen led_task'ta "saglikli ve bagli"
+   demek; bekleme icin kullanilsa tam da duzeltmeye calistigimiz karisikligi uretir. */
+typedef enum {
+    LED_WAIT_SETUP,   /* yavas blink 500ms — MUSTERI: WiFi kurulumu bekleniyor */
+    LED_WAIT_PROV,    /* hizli blink 200ms — GECICI: cloud'dan kimlik aliniyor */
+    LED_WAIT_ID,      /* cift flas — YALNIZ OPERATOR: kimlik yok, fabrika hazirligi gerek */
+} led_wait_t;
+
+#define LED_WAIT_FAST_MS 200    /* self-provisioning blink periyodu */
+#define LED_DFLASH_MS   2000    /* cift flas tam periyodu */
+#define LED_DFLASH_ON    120    /* her flasin suresi */
+#define LED_DFLASH_GAP   200    /* iki flas arasi karanlik */
+
+/* Cift flas: [0,120) yanik — [120,320) sonuk — [320,440) yanik — kalani sonuk. */
+static bool led_dflash_on(int64_t t) {
+    if (t < LED_DFLASH_ON) return true;
+    const int64_t s = LED_DFLASH_ON + LED_DFLASH_GAP;
+    return (t >= s && t < s + LED_DFLASH_ON);
+}
+
+/* Deseni sur + SONSUZ bekle (DONMEZ). 20ms tik: cift flasin 120ms'lik parcasi da,
+   200ms'lik hizli blink de net gorunsun (30ms'te duty jitter'i deseni bulaniklastirir).
+   Bu dalda baska is yok — tik maliyeti onemsiz. */
+static void led_wait_forever(led_wait_t mode) {
+    led_init();
+    for (;;) {
+        const int64_t now = esp_timer_get_time() / 1000;
+        bool on;
+        switch (mode) {
+            case LED_WAIT_PROV: on = (now % LED_WAIT_FAST_MS) < (LED_WAIT_FAST_MS / 2); break;
+            case LED_WAIT_ID:   on = led_dflash_on(now % LED_DFLASH_MS);                break;
+            case LED_WAIT_SETUP:
+            default:            on = (now % LED_BLINK_MS) < (LED_BLINK_MS / 2);         break;
+        }
+        led_set(on ? LED_MAX : 0);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 /* Durum makinesi: oncelik yuksek->dusuk = panik > burst > blink > nabiz.
@@ -1042,11 +1100,11 @@ static void provision_task(void *arg) {
     for (int w = 0; !time_synced() && w < 30000; w += 500) vTaskDelay(pdMS_TO_TICKS(500));
     for (int attempt = 1; ; attempt++) {
         if (gs_provision_run(&g_id) == ESP_OK) {
-            ESP_LOGW(TAG, "self-provisioning OK — reboot (mqtt_ready ile normal boot)");
+            ESP_LOGW(TAG, "self-provisioning OK - rebooting (normal boot with mqtt_ready)");
             esp_restart();
         }
         int backoff = attempt < 6 ? attempt * 10 : 60;  /* 10,20,30,40,50,60s cap */
-        ESP_LOGW(TAG, "self-provisioning basarisiz (deneme %d) — %dsn sonra tekrar", attempt, backoff);
+        ESP_LOGW(TAG, "self-provisioning failed (attempt %d) - retrying in %d s", attempt, backoff);
         vTaskDelay(pdMS_TO_TICKS(backoff * 1000));
     }
 }
@@ -1076,17 +1134,22 @@ void app_main(void) {
        3) Ikisi de VAR -> normal boot (asagi). */
     if (!gs_identity_mqtt_ready(&g_id)) {
         if (!gs_identity_claim_ready(&g_id)) {
-            ESP_LOGE(TAG, "MQTT + claim kimligi YOK — fabrika hazirligi gerek (admin USB'den yazmali)");
-            for (;;) vTaskDelay(pdMS_TO_TICKS(5000));
+            ESP_LOGE(TAG, "No MQTT or claim identity - needs factory prep (admin writes over USB)");
+            /* Cift flas: musterinin ASLA gormedigi durum (kart fabrikadan kimliksiz cikmis
+               ya da arizali). Operator icin blink'ten ayrilmasi onemli — "kurulum bekliyor"
+               degil, "admin USB'den kimlik yazmali" demek. */
+            led_wait_forever(LED_WAIT_ID);
         }
         if (!gs_identity_wifi_ready(&g_id)) {
-            ESP_LOGW(TAG, "MQTT yok, claim var, WiFi yok — captive + BLE kurulum (WiFi girilince self-provision)");
+            ESP_LOGW(TAG, "No MQTT, claim present, no WiFi - captive + BLE setup (self-provisions once WiFi is entered)");
             gs_captive_start();          /* BLEPROV: noblock — SoftAP + portal acilir */
             gs_bleprov_start(&g_id);     /* BLE kurulum (mobil app); fail -> yalniz captive calisir */
-            for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
+            /* KUTUDAN CIKAN CIHAZIN girdigi dal — musterinin gordugu tek ekran burasi.
+               Sabit LED'in en cok zarar verdigi yer; app metniyle uyum icin blink SART. */
+            led_wait_forever(LED_WAIT_SETUP);
         }
         /* claim + WiFi var, MQTT yok -> SELF-PROVISION (HTTPS, api.geoshake.org). */
-        ESP_LOGW(TAG, "MQTT kimligi yok — self-provisioning (claim-token ile cloud'dan aliniyor)");
+        ESP_LOGW(TAG, "No MQTT identity - self-provisioning (fetching from cloud with claim token)");
         wifi_start();  /* STA + SNTP baslatir (TLS cert notBefore/notAfter icin saat gerek) */
         /* WiFi baglanmazsa (cred bozuk) mevcut 60sn watchdog yerinde captive'e dusurur
            (musteri WiFi'yi duzeltir -> reboot -> tekrar bu dal). Baglanirsa guard kendini siler. */
@@ -1097,29 +1160,26 @@ void app_main(void) {
            yapiyordu (saha bulgusu). ota_task da bu yuzden ayri 8192-stack task. provision_task GOT_IP
            + SNTP bekler, gs_provision_run eder, basarida esp_restart eder. */
         xTaskCreatePinnedToCore(provision_task, "provision", 10240, NULL, 5, NULL, 0);
-        for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  /* main task idle; provision_task reboot edecek */
+        /* Hizli blink: gecici durum — provision_task cloud'dan kimlik alip reboot edecek.
+           Kurulum blink'inden ayri, cunku burada musterinin YAPACAGI bir sey yok (beklesin).
+           Uzun surerse destek "hizli mi yavas mi?" diye sorup asamayi ayirt edebilir. */
+        led_wait_forever(LED_WAIT_PROV);
     }
     if (!gs_identity_wifi_ready(&g_id)) {
-        ESP_LOGW(TAG, "WiFi YOK — captive portal + BLE kurulum baslatiliyor (musteri WiFi girecek)");
+        ESP_LOGW(TAG, "No WiFi - starting captive portal + BLE setup (customer enters WiFi)");
         /* Iki kurulum yolu YAN YANA: captive (SoftAP "GeoShake-XXXX" + form, web) + BLE prov
            (mobil app, GST1-XXXXX). Ikisi de gs_identity_save_wifi yazar -> esp_restart ->
            tam kimlikle normal boot. BLE fail olursa (bellek vb.) yalniz captive calisir. */
         gs_captive_start();
         gs_bleprov_start(&g_id);
-        /* Kurulum modu LED: kurulmamis / wifi-reset -> yavas blink (LED_BLINK_MS=500ms).
-           Bu dalda normal boot'un led_init/led_task'ina HIC gelinmiyor (sonsuz idle) -> LED
-           olu kaliyordu. GPIO39'u burada surup "kurulum bekleniyor" gostergesi olarak yakip
-           sonduruyoruz. golden'a bagli DEGIL (led_task'in panik strobe'undan kacinir). */
-        led_init();
-        for (;;) {
-            int64_t now = esp_timer_get_time() / 1000;
-            led_set(((now % LED_BLINK_MS) < (LED_BLINK_MS / 2)) ? LED_MAX : 0);
-            vTaskDelay(pdMS_TO_TICKS(30));
-        }
+        /* wifi-reset sonrasi kurulum bekleme (MQTT var, WiFi yok). Musteri acisindan
+           :1077 ile AYNI sey ("WiFi gir") -> deseni de AYNI olmali; farkli desen burada
+           bilgi degil kafa karisikligi uretirdi. */
+        led_wait_forever(LED_WAIT_SETUP);
     }
 
     /* ---- provisioned (kimlik tam): mevcut boot akisi AYNEN — REGRESYONSUZ ---- */
-    ESP_LOGI(TAG, "GeoShake %s (%s) baslatiliyor", g_id.device_id, FW_VERSION);
+    ESP_LOGI(TAG, "GeoShake %s (%s) starting", g_id.device_id, FW_VERSION);
     /* 3 golden HEPSI gecerse cihaz saglikli; biri bile FAIL ise led_task panik strobe yakar.
        & (degil &&): kisa-devre OLMASIN — 3 check de calissin ve boot'ta loglasin. */
     s_golden_ok = golden_check()         /* C ozellik hesabi shared (TS) ile uyumlu mu? */
@@ -1143,8 +1203,8 @@ void app_main(void) {
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_ota_img_states_t st;
     if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
-        ESP_LOGW(TAG, "OTA sonrasi ilk boot — self-test basliyor");
+        ESP_LOGW(TAG, "first boot after OTA - starting self-test");
         xTaskCreate(selftest_task, "selftest", 4096, NULL, 4, NULL);
     }
-    ESP_LOGI(TAG, "calisilan partition: %s", run->label);
+    ESP_LOGI(TAG, "running partition: %s", run->label);
 }

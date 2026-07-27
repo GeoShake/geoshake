@@ -52,7 +52,7 @@ void gs_cal_load(float gain[4]) {
                 gain[i] = 1.0f;
     } else if (e != ESP_ERR_NVS_NOT_FOUND) {
         /* Anahtar var ama okunamadı / boyut yanlış -> default 1.0 korunur, uyar. */
-        ESP_LOGW(CAL_TAG, "gain blob gecersiz (e=%d len=%u) -> default 1.0",
+        ESP_LOGW(CAL_TAG, "gain blob invalid (e=%d len=%u) -> default 1.0",
                  (int)e, (unsigned)len);
     }
 }

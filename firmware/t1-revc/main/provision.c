@@ -57,22 +57,22 @@ esp_err_t gs_provision_run(const gs_identity_t *id) {
     /* open(write_len) → write(body) → fetch_headers → read(response). Deterministik akis. */
     esp_err_t e = esp_http_client_open(client, (int)strlen(body_str));
     if (e != ESP_OK) {
-        ESP_LOGW(TAG, "baglanti acilamadi: %s", esp_err_to_name(e));
+        ESP_LOGW(TAG, "could not open connection: %s", esp_err_to_name(e));
         goto cleanup;
     }
     int w = esp_http_client_write(client, body_str, (int)strlen(body_str));
     if (w < 0) {
-        ESP_LOGW(TAG, "govde yazilamadi");
+        ESP_LOGW(TAG, "could not write body");
         goto cleanup;
     }
     if (esp_http_client_fetch_headers(client) < 0) {
-        ESP_LOGW(TAG, "header alinamadi");
+        ESP_LOGW(TAG, "could not fetch headers");
         goto cleanup;
     }
     int status = esp_http_client_get_status_code(client);
     if (status != 200) {
         /* 401 = claim gecersiz (secret/device_id uyusmuyor). Sir loglamadan durum bas. */
-        ESP_LOGW(TAG, "provision HTTP %d (401=claim gecersiz; diger=altyapi)", status);
+        ESP_LOGW(TAG, "provision HTTP %d (401=invalid claim; other=infrastructure)", status);
         goto cleanup;
     }
 
@@ -86,7 +86,7 @@ esp_err_t gs_provision_run(const gs_identity_t *id) {
 
     cJSON *j = cJSON_ParseWithLength(resp, (size_t)total);
     if (j == NULL) {
-        ESP_LOGW(TAG, "yanit JSON degil");
+        ESP_LOGW(TAG, "response is not JSON");
         goto cleanup;
     }
     /* Yalnız mqttUser/mqttPass alınır. Yanıttaki broker/port BİLİNÇLİ yok sayılır — cihaz
@@ -98,13 +98,13 @@ esp_err_t gs_provision_run(const gs_identity_t *id) {
         /* NVS'e YALNIZ mqtt anahtarlarini yaz (device_id/claim/wifi korunur). */
         esp_err_t se = gs_identity_save_mqtt(u->valuestring, p->valuestring);
         if (se == ESP_OK) {
-            ESP_LOGI(TAG, "self-provisioning OK: mqtt kimligi NVS'e yazildi (%s)", id->device_id);
+            ESP_LOGI(TAG, "self-provisioning OK: mqtt identity written to NVS (%s)", id->device_id);
             ret = ESP_OK;
         } else {
-            ESP_LOGE(TAG, "mqtt NVS yazilamadi: %s", esp_err_to_name(se));
+            ESP_LOGE(TAG, "could not write mqtt to NVS: %s", esp_err_to_name(se));
         }
     } else {
-        ESP_LOGW(TAG, "yanitta mqttUser/mqttPass yok/bos");
+        ESP_LOGW(TAG, "response has no/empty mqttUser or mqttPass");
     }
     cJSON_Delete(j);
 
