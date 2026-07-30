@@ -3,9 +3,8 @@ GeoShake DIY seismometer — write-up
 Copyright (C) 2024-2026 Appflows Teknoloji A.S.
 Text: CC BY-SA 4.0 · Code in this directory: GPL-3.0-or-later
 
-STATUS: draft. All measurements are done and real. What remains before this
-goes public: the wiring photo, the waveform plot, and the email signup link.
-Do not publish while any TODO comment is still in the file.
+Every measurement in this file was taken on real hardware. A photograph of the
+breadboard is still to come — the wiring diagram covers it in the meantime.
 -->
 
 # Build a seismometer that actually detects earthquakes
@@ -85,7 +84,7 @@ All three are in the code you're about to flash.
 | LSM6DS3 breakout | Or LSM6DS3TR-C, or LSM6DSO. SparkFun, Seeed Grove, generic clones | $10–13 |
 | Jumper wires | 4 per sensor | $1 |
 | Breadboard | Optional but easier | $3 |
-| **Second sensor** | **Optional — but it measurably lowers your noise floor (1.35× in our test). Best $12 in the build.** | +$10–13 |
+| **Second sensor** | **Optional — but it measurably lowers your noise floor (1.40× in our test). Best $12 in the build.** | +$10–13 |
 
 Any 6-axis IMU from ST's LSM6 family works: the driver accepts WHO_AM_I values
 `0x69` (LSM6DS3), `0x6A` (LSM6DS3TR-C) and `0x6C` (LSM6DSO). We used two LSM6DS3.
@@ -114,6 +113,15 @@ is deterministic enough to sample several sensors inside one sample period.
 
 Both sensors share SCLK, MOSI and MISO. Only CS is unique per sensor.
 
+![Wiring diagram: two LSM6DS3 sensors sharing power, clock and data with an ESP32-S3, each with its own chip-select line](assets/wiring.svg)
+
+Running a single sensor? Drop everything in the #2 column and change one line in
+`geoshake_diy.ino`:
+
+```cpp
+static const int CS_PINS[] = {9};   // was {9, 10}
+```
+
 > ⚠️ **The trap that will cost you an hour.** On these parts, the CS pin also
 > selects the protocol: held high the sensor speaks I²C, pulled low it speaks
 > SPI. A sensor wired for SPI is therefore **completely invisible to an I²C
@@ -121,7 +129,6 @@ Both sensors share SCLK, MOSI and MISO. Only CS is unique per sensor.
 > If you're unsure how yours is wired, flash `firmware/spi_probe` — it sweeps
 > the likely MISO pins and tells you exactly what answered where.
 
-<!-- TODO: wiring photo + fritzing-style diagram -->
 
 ## Flashing it
 
@@ -193,8 +200,9 @@ After boot, ~30 seconds of warm-up while the LTA fills:
 ```
 
 `noise` is √LTA — the RMS of your background vibration, in m/s². **This is your
-noise floor, measured.** Ours settled around 0.014 m/s² on a desk in a normal
-room. A quiet concrete floor will read lower; a desk next to a road, higher.
+noise floor, measured.** Ours settled around 0.009 m/s² on a desk in a quiet
+room — and climbed past 0.04 m/s² when something in the building started
+vibrating. A concrete floor will read lower; a desk next to a road, higher.
 
 Once it says `[armed]`, knock on the desk:
 
@@ -294,39 +302,54 @@ sensor 0 alone, sensor 1 alone, and both averaged. Running them simultaneously
 matters — background vibration changes minute to minute, so measuring one after
 the other would compare different rooms rather than different sensor counts.
 
-Flash it, leave the desk alone for four minutes, and read the result. Ours, over
-18 reports after settling:
+Flash it, leave the desk alone for seven minutes, and read the result. Ours, over
+30 clean windows:
 
 ```
-  single-sensor noise floor : 0.022000 m/s^2
-  two-sensor  noise floor   : 0.016520 m/s^2
-  measured array gain       : 1.348x   (theory for uncorrelated noise: 1.414x)
+  single-sensor noise floor : 0.009295 m/s^2
+  two-sensor  noise floor   : 0.006638 m/s^2
+  measured array gain       : 1.402x   (theory for uncorrelated noise: 1.414x)
+  clean windows averaged    : 30
+  discarded (room moved)    : 0
 ```
 
-**1.35× lower noise floor, for one extra $12 part.** Individual reports ranged
-from 1.25× to 1.46× as the room got noisier and quieter.
+**1.40× lower noise floor, for one extra $12 part** — within 1% of the
+theoretical maximum. Consecutive windows read 1.400, 1.397, 1.399, 1.400, 1.400,
+1.398, 1.393: that stability is what a settled measurement looks like.
 
-### Why 1.35 and not 1.41 — the interesting part
+### Getting this wrong taught us more than getting it right
 
-The shortfall isn't measurement error. It's physics, and it tells you something.
+Our first two attempts gave 1.35×, and we nearly published that number with a
+confident physical explanation for the shortfall. Both runs were contaminated —
+once by someone bumping the desk, once by a vibration source that appeared
+mid-measurement and pushed the noise floor from 0.012 to 0.045 m/s².
 
-Averaging only cancels noise that is **uncorrelated** between the two sensors —
-each part's own electronic noise. But both sensors sit on the same desk, and the
-desk genuinely vibrates. That component is **correlated**: both parts see it
-identically, so averaging preserves it, exactly as it preserves an earthquake.
+In the quiet run the noise floor dropped to 0.0093 m/s² and the gain rose to
+1.402×. So the shortfall was never a deep truth about correlated motion in the
+building — it was **the room**, and the fix was to actually be quiet.
 
-So the measured 1.35× is a blend: full √2 improvement on sensor noise, no
-improvement on real motion. The gap between 1.41 and 1.35 is, in effect, a
-measurement of how much of your "noise floor" is actually your building moving.
-Put the sensors on a concrete floor instead of a desk and the number climbs
-toward the theoretical value — the room got quieter, so more of what remains is
-sensor noise. Try it; it's a satisfying experiment.
+That said, the underlying physics is real and it's why the contamination hurt:
+averaging only cancels noise that is **uncorrelated** between the two parts.
+Their own electronic noise is uncorrelated, so it drops by √2. A vibrating desk
+is *correlated* — both sensors see it identically, so averaging preserves it,
+exactly as it preserves an earthquake. A noisy room therefore doesn't just raise
+your noise floor, it also **caps how much a second sensor can help**. Watching
+the gain fall from 1.40 toward 1.15 as the room got busier is that effect,
+measured.
 
-One more detail from our run: sensor 0 was consistently noisier than sensor 1
-(0.029 vs 0.022 m/s² in the same seconds). Part-to-part variation is real, and
-it's another reason averaging helps — you're not at the mercy of the worse part.
+Two practical consequences:
 
-This is the honest answer to a question you might reasonably ask: why does a
+- **Your measured gain is a quietness score.** Close to 1.41 means what's left
+  is mostly sensor noise. Down near 1.1 means your surroundings dominate — move
+  the sensors to a concrete floor, against a wall, away from anything with a
+  motor in it.
+- **Don't trust a run with discards.** The sketch flags any window where the
+  STA/LTA ratio crosses 2.5 and leaves it out of the average. If more than a
+  couple get discarded, the number is not yet real. (Its blind spot: *continuous*
+  vibration raises the LTA too, so the ratio stays low and the window passes.
+  A noise floor that drifts upward across the run is the giveaway — watch it.)
+
+This is also the honest answer to a question you might reasonably ask: why does a
 commercial station bother with four accelerometers when one detects shaking
 fine? Because the noise floor decides how small an event you can see at all, and
 array gain is the cheapest way to lower it. Four sensors buy 2× over one, in the
@@ -389,12 +412,48 @@ Watch the live network at [stations.geoshake.org](https://stations.geoshake.org)
 | Sketch / tool | What it's for |
 |---|---|
 | `firmware/geoshake_diy` | The detector. This is the one you want. |
+| `firmware/webui` | The detector **plus a live dashboard the device serves itself** — see below. |
 | `firmware/showcase` | Same detector, drawn as a live dashboard with a moving STA/LTA bar. Needs a real terminal (`screen`, iTerm) — the Arduino IDE monitor can't render it. Nice for demos and filming. |
 | `firmware/array_gain` | Measures what a second sensor actually buys you. |
 | `firmware/spi_probe` | Finds your wiring when the sensor doesn't answer. |
 | `firmware/i2c_scan` | Same, for I²C wiring. |
 | `firmware/test` | Golden vectors on your PC, no hardware needed. |
 | `tools/plot_waveform.py` | CSV dump → SVG plot. No dependencies. |
+| `tools/wiring_diagram.py` | Regenerates the wiring diagram. Change a pin in one dict, the picture follows. |
+| `tools/calculator.html` | Offline STA/LTA parameter calculator. |
+
+## The web dashboard
+
+Flash `firmware/webui` instead and the device serves its own interface — live
+waveform, detector state, noise floor, and every detection with a downloadable
+waveform. No app, no cloud, no account.
+
+![The device's own dashboard: live three-axis ground motion, STA/LTA detector, and a table of detections](assets/web-dashboard.png)
+
+That screenshot is the real thing, caught mid-detection — the badge reads
+DETECTING because someone knocked on the desk while the page was open. It works
+on a phone too ([narrow layout](assets/web-dashboard-mobile.png)).
+
+**First boot** has no Wi-Fi saved, so the device opens its own access point
+called **GeoShake-DIY**. Join it, open `http://192.168.4.1`, enter your network,
+and it restarts and connects. After that it's at `http://geoshake-diy.local`
+(the serial monitor also prints the IP).
+
+A few things it does deliberately:
+
+- **Sampling runs on its own core.** The detector sits in a high-priority task
+  pinned to core 1; Wi-Fi and HTTP live on core 0. A page load can take tens of
+  milliseconds, which at 104 Hz would drop samples — and a detector that stops
+  detecting while someone opens a browser tab isn't a detector.
+- **No libraries to install.** WiFi, WebServer, Preferences and mDNS all ship
+  with the ESP32 core. The page is plain HTML/CSS/JS served from flash.
+- **It works with no internet.** Your router doesn't need a WAN connection for
+  this to work. A seismic station that needs the cloud to show you its own data
+  is the wrong design.
+- **Every detection is downloadable** as the same CSV the serial dump produces,
+  so `tools/plot_waveform.py` works on it directly.
+
+Costs about 300 KB of flash over the plain build (74% used, so there's room).
 
 ## Troubleshooting
 

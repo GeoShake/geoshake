@@ -11,17 +11,24 @@
 // (miniSEED stream id) AYNI değeri kullanmalı; ayrışırsa jAmaSeis/ObsPy tarafında
 // stream seçimi sessizce boşa düşer.
 //
-// DİKKAT (GH-FDSN): "GS" ŞU AN TESCİLLİ DEĞİL — fdsn.org kaydına göre GS,
-// "US Geological Survey Networks" (ASL/USGS, 1980–) ağına ait. Kendi kodumuz
-// için FDSN'e başvuru yapılacak (bkz. docs/fdsn-network-code-basvuru.md).
-// Kod geldiğinde YALNIZ buradaki sabit değişir; tüketiciler otomatik uyar.
+// GEÇMİŞ (GH-FDSN): kod 2026-07-27'ye kadar "GS" idi. Bu YANLIŞTI — fdsn.org
+// kayıt defterine göre GS, "US Geological Survey Networks" (ASL/USGS, 1980–,
+// DOI 10.7914/SN/GS) ağına ait. "Tescilsiz geçici kod" değil, doğrudan İSİM
+// ÇAKIŞMASI: verimizi GS altında ortak arşive alan biri gerçek USGS verisiyle
+// karıştırır. Dokümantasyonda ASLA "GS tescilli değil" DENMEZ (yanlış beyan).
 //
-// Kod değişimi KIRICI bir değişikliktir: mevcut SeedLink stream id'leri
-// (GS_XXXXX_00_LNZ) ve yayınlanmış SAC/StationXML dosyaları eski kodu taşır.
-// Değişim öncesi /developer sayfasında ve mevcut kullanıcılara duyuru gerekir.
+// 2026-07-27: kod "GW" olarak değiştirildi. fdsn.org/ws/networks/1/query ile
+// doğrulandı — GW kayıt defterinde YOK (atanmamış). FDSN başvurusu ayrı iş;
+// HENÜZ BAŞVURU YAPILMADI. Başvuru onaylanınca YALNIZ FDSN_NETWORK_REGISTERED
+// true yapılır — dokümantasyonda "başvuru sürüyor" gibi bir ifade KULLANILMAZ.
+//
+// Kod değişimi KIRICI bir değişikliktir: 27 Tem 2026 öncesi indirilmiş SAC /
+// StationXML dosyaları ve eski SeedLink stream id'leri (GS_XXXXX_00_LNZ) hâlâ
+// eski kodu taşır. O dosyaları GS altında ortak arşive KATMAYIN — yeniden
+// çekildiğinde GW ile gelirler.
 
 /** Yayınlanan ağ kodu (StationXML `<Network code>`, SAC KNETWK, SEED net alanı). */
-export const FDSN_NETWORK_CODE = "GS";
+export const FDSN_NETWORK_CODE = "GW";
 
 /** FDSN'de tescilli mi? false → dokümantasyonda "provisional" ibaresi gösterilir. */
 export const FDSN_NETWORK_REGISTERED = false;

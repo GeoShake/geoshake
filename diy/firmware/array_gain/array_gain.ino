@@ -38,6 +38,12 @@ static const int SENSOR_COUNT = 2;
 static const uint32_t SETTLE_MS  = 90000;   // let the 30 s LTA converge properly
 static const uint32_t REPORT_MS  = 10000;
 
+// A knock, a footstep, a slammed door — any of it inflates the "noise" floor
+// and quietly ruins the result. Rather than trusting the room to stay quiet,
+// watch the STA/LTA ratio: in a still room it sits near 1. If it goes past this
+// during a reporting window, that window is thrown away instead of averaged in.
+static const double DISTURB_RATIO = 2.5;
+
 static Lsm6Spi sensors;
 static StaltaState detA, detB, detC;
 
@@ -49,6 +55,10 @@ static bool settled = false;
 // Running mean of the gain after settling, so one noisy report cannot decide it.
 static double gainSum = 0.0;
 static int    gainSamples = 0;
+static int    discarded = 0;
+
+// Peak ratio seen since the last report — the disturbance detector.
+static double windowPeakRatio = 0.0;
 
 void setup() {
   Serial.begin(115200);
@@ -93,10 +103,14 @@ void loop() {
   expandSingleSensor(s1[0], s1[1], s1[2], buf);
   staltaStep(detB, buf);
 
+  // Refill buf before detector C — it must see the AVERAGE of both sensors.
+  // (Reusing the previous buffer here silently turns C into a copy of B: the
+  // reported "gain" then compares sensor 1 against itself and means nothing.)
   expandTwoSensors(s0, s1, buf);
-  staltaStep(detC, buf);
+  const StaltaResult rC = staltaStep(detC, buf);
 
   sampleCount++;
+  if (rC.ratio > windowPeakRatio) windowPeakRatio = rC.ratio;
 
   const uint32_t now = millis();
   if (now - lastReportMs < REPORT_MS) return;
@@ -116,29 +130,43 @@ void loop() {
     Serial.println();
   }
 
+  const bool disturbed = windowPeakRatio > DISTURB_RATIO;
+  const double peakThisWindow = windowPeakRatio;
+  windowPeakRatio = 0.0;
+
   Serial.print(settled ? F("[measure] ") : F("[settle]  "));
   Serial.print(elapsed / 1000); Serial.print(F("s  n=")); Serial.print(sampleCount);
   Serial.print(F("  s0=")); Serial.print(nA, 6);
   Serial.print(F("  s1=")); Serial.print(nB, 6);
   Serial.print(F("  avg=")); Serial.print(nC, 6);
   Serial.print(F("  gain=")); Serial.print(gain, 3);
-  Serial.println(F("x"));
+  Serial.print(F("x"));
+  if (disturbed) {
+    Serial.print(F("   <-- DISCARDED, something moved (peak ratio "));
+    Serial.print(peakThisWindow, 1);
+    Serial.print(F(")"));
+  }
+  Serial.println();
 
   if (settled) {
-    gainSum += gain;
-    gainSamples++;
+    if (disturbed) {
+      discarded++;
+    } else {
+      gainSum += gain;
+      gainSamples++;
+    }
 
-    // Summarise every 6 reports (~1 minute of settled data).
-    if (gainSamples % 6 == 0) {
+    // Summarise every 6 clean reports (~1 minute of usable data).
+    if (gainSamples > 0 && gainSamples % 6 == 0 && !disturbed) {
       const double meanGain = gainSum / gainSamples;
       Serial.println();
-      Serial.println(F("  ---- running result ----"));
+      Serial.println(F("  ---- running result (clean windows only) ----"));
       Serial.print(F("  single-sensor noise floor : ")); Serial.print(singleMean, 6); Serial.println(F(" m/s^2"));
       Serial.print(F("  two-sensor  noise floor   : ")); Serial.print(nC, 6); Serial.println(F(" m/s^2"));
       Serial.print(F("  measured array gain       : ")); Serial.print(meanGain, 3);
-      Serial.print(F("x   (theory for uncorrelated noise: 1.414x)"));
-      Serial.println();
-      Serial.print(F("  reports averaged          : ")); Serial.println(gainSamples);
+      Serial.println(F("x   (theory for uncorrelated noise: 1.414x)"));
+      Serial.print(F("  clean windows averaged    : ")); Serial.println(gainSamples);
+      Serial.print(F("  discarded (room moved)    : ")); Serial.println(discarded);
       Serial.println();
     }
   }

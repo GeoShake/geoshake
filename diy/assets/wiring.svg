@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 610" width="900" height="610" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+<style>
+:root{--surface:#fcfcfb;--ink:#1d1d1f;--muted:#6e6e73;--faint:#c8c8c6;--board:#ececeb;--boardline:#c8c8c6;--chip:#e3f6f4;--chipline:#0C9C92;--pwr:#C0392B;--gnd:#5a5a5e;--sclk:#B8860B;--mosi:#2E6FD9;--miso:#0C9C92;--cs1:#7C4DBE;--cs2:#E8710A;--note:#F4B942}
+@media (prefers-color-scheme: dark){:root{--surface:#1a1a19;--ink:#f0f0ee;--muted:#9a9a97;--faint:#4a4a48;--board:#242423;--boardline:#3a3a38;--chip:#12302e;--chipline:#2ECFC3;--pwr:#E05B4A;--gnd:#9a9a97;--sclk:#D9A521;--mosi:#4A87E0;--miso:#149E93;--cs1:#9B72E0;--cs2:#D97316;--note:#F4B942}}
+.bg{fill:var(--surface)}
+.board{fill:var(--board);stroke:var(--boardline);stroke-width:1.5}
+.chip{fill:var(--chip);stroke:var(--chipline);stroke-width:1.5}
+.ink{fill:var(--ink)}.mut{fill:var(--muted)}
+.w{fill:none;stroke-width:2.5;stroke-linecap:round}
+.pad{stroke-width:1.5}
+.t-title{font-size:16px;font-weight:700}
+.t-sub{font-size:12.5px}
+.t-board{font-size:13px;font-weight:700}
+.t-pin{font-size:11.5px;font-weight:600;font-family:ui-monospace,'SF Mono',Menlo,monospace}
+.t-lbl{font-size:10.5px;font-weight:600}
+.t-note{font-size:11.5px}
+.pwr{stroke:var(--pwr)} .pwrf{fill:var(--pwr)}
+.gnd{stroke:var(--gnd)} .gndf{fill:var(--gnd)}
+.sclk{stroke:var(--sclk)} .sclkf{fill:var(--sclk)}
+.mosi{stroke:var(--mosi)} .mosif{fill:var(--mosi)}
+.miso{stroke:var(--miso)} .misof{fill:var(--miso)}
+.cs1{stroke:var(--cs1)} .cs1f{fill:var(--cs1)}
+.cs2{stroke:var(--cs2)} .cs2f{fill:var(--cs2)}
+</style>
+<rect class="bg" width="900" height="610"/>
+<text class="ink t-title" x="40" y="42">Wiring — two LSM6DS3 sensors on one SPI bus</text>
+<text class="mut t-sub" x="40" y="62">Both sensors share power, clock and data. Only the chip-select line is unique to each.</text>
+<rect class="board" x="60" y="120" width="170" height="330" rx="10"/>
+<text class="ink t-board" x="74" y="146">ESP32-S3</text>
+<text class="mut t-lbl" x="74" y="163">DevKitC (any S3 board)</text>
+<rect class="chip" x="620" y="116" width="210" height="168" rx="10"/>
+<text class="ink t-board" x="634" y="141">LSM6DS3  #1</text>
+<text class="mut t-lbl" x="634" y="157">or LSM6DS3TR-C / LSM6DSO</text>
+<rect class="chip" x="620" y="316" width="210" height="168" rx="10"/>
+<text class="ink t-board" x="634" y="341">LSM6DS3  #2</text>
+<text class="mut t-lbl" x="634" y="357">or LSM6DS3TR-C / LSM6DSO</text>
+<circle class="pwrf" cx="230" cy="190" r="4"/>
+<text class="ink t-pin" x="218" y="194" text-anchor="end">3V3</text>
+<path class="w pwr" d="M230,190 H300 V178 H620"/>
+<path class="w pwr" d="M300,178 V378 H620"/>
+<circle class="pwrf" cx="300" cy="178" r="3"/>
+<circle class="pwrf" cx="620" cy="178" r="3.5"/>
+<text class="ink t-pin" x="630" y="182">VDD</text>
+<circle class="pwrf" cx="620" cy="378" r="3.5"/>
+<text class="ink t-pin" x="630" y="382">VDD</text>
+<text class="pwrf t-lbl" x="238" y="183">power</text>
+<circle class="gndf" cx="230" cy="220" r="4"/>
+<text class="ink t-pin" x="218" y="224" text-anchor="end">GND</text>
+<path class="w gnd" d="M230,220 H326 V195 H620"/>
+<path class="w gnd" d="M326,195 V395 H620"/>
+<circle class="gndf" cx="326" cy="195" r="3"/>
+<circle class="gndf" cx="620" cy="195" r="3.5"/>
+<text class="ink t-pin" x="630" y="199">GND</text>
+<circle class="gndf" cx="620" cy="395" r="3.5"/>
+<text class="ink t-pin" x="630" y="399">GND</text>
+<text class="gndf t-lbl" x="238" y="213">ground</text>
+<circle class="sclkf" cx="230" cy="250" r="4"/>
+<text class="ink t-pin" x="218" y="254" text-anchor="end">12</text>
+<path class="w sclk" d="M230,250 H352 V212 H620"/>
+<path class="w sclk" d="M352,212 V412 H620"/>
+<circle class="sclkf" cx="352" cy="212" r="3"/>
+<circle class="sclkf" cx="620" cy="212" r="3.5"/>
+<text class="ink t-pin" x="630" y="216">SCL/SPC</text>
+<circle class="sclkf" cx="620" cy="412" r="3.5"/>
+<text class="ink t-pin" x="630" y="416">SCL/SPC</text>
+<text class="sclkf t-lbl" x="238" y="243">clock</text>
+<circle class="mosif" cx="230" cy="280" r="4"/>
+<text class="ink t-pin" x="218" y="284" text-anchor="end">11</text>
+<path class="w mosi" d="M230,280 H378 V229 H620"/>
+<path class="w mosi" d="M378,229 V429 H620"/>
+<circle class="mosif" cx="378" cy="229" r="3"/>
+<circle class="mosif" cx="620" cy="229" r="3.5"/>
+<text class="ink t-pin" x="630" y="233">SDA/SDI</text>
+<circle class="mosif" cx="620" cy="429" r="3.5"/>
+<text class="ink t-pin" x="630" y="433">SDA/SDI</text>
+<text class="mosif t-lbl" x="238" y="273">→ sensor</text>
+<circle class="misof" cx="230" cy="310" r="4"/>
+<text class="ink t-pin" x="218" y="314" text-anchor="end">13</text>
+<path class="w miso" d="M230,310 H404 V246 H620"/>
+<path class="w miso" d="M404,246 V446 H620"/>
+<circle class="misof" cx="404" cy="246" r="3"/>
+<circle class="misof" cx="620" cy="246" r="3.5"/>
+<text class="ink t-pin" x="630" y="250">SDO</text>
+<circle class="misof" cx="620" cy="446" r="3.5"/>
+<text class="ink t-pin" x="630" y="450">SDO</text>
+<text class="misof t-lbl" x="238" y="303">← sensor</text>
+<circle class="cs1f" cx="230" cy="340" r="4"/>
+<text class="ink t-pin" x="218" y="344" text-anchor="end">9</text>
+<path class="w cs1" d="M230,340 H430 V263 H620"/>
+<circle class="cs1f" cx="620" cy="263" r="3.5"/>
+<text class="ink t-pin" x="630" y="267">CS</text>
+<text class="cs1f t-lbl" x="238" y="332">select #1</text>
+<circle class="cs2f" cx="230" cy="370" r="4"/>
+<text class="ink t-pin" x="218" y="374" text-anchor="end">10</text>
+<path class="w cs2" d="M230,370 H456 V463 H620"/>
+<circle class="cs2f" cx="620" cy="463" r="3.5"/>
+<text class="ink t-pin" x="630" y="467">CS</text>
+<text class="cs2f t-lbl" x="238" y="362">select #2</text>
+<rect x="40" y="512" width="820" height="58" rx="10" fill="none" stroke="var(--note)" stroke-width="1.5"/>
+<text class="ink t-note" x="58" y="533" font-weight="700">CS also picks the protocol.</text>
+<text class="mut t-note" x="58" y="550">Pulled low these parts speak SPI; held high they speak I²C.</text>
+<text class="mut t-note" x="58" y="564">That is why an I²C scan finds nothing on a correctly wired SPI build — run spi_probe if in doubt.</text>
+<text class="mut t-lbl" x="40" y="596">geoshake.org · DIY seismometer · pin numbers are GPIO</text>
+</svg>
