@@ -1,0 +1,3 @@
+-I../geoshake_diy
+-std=c++11
+-xc++

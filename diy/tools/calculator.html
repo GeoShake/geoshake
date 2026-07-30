@@ -1,0 +1,195 @@
+<!doctype html>
+<!--
+GeoShake DIY — STA/LTA parameter calculator
+Copyright (C) 2024-2026 Appflows Teknoloji A.S.
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Single file, no dependencies, works offline. Open it in a browser.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STA/LTA parameter calculator — GeoShake DIY</title>
+<style>
+  :root {
+    --bg:#fcfcfb; --surface:#fff; --ink:#1d1d1f; --muted:#6e6e73; --faint:#a1a1a6;
+    --line:#e6e6e4; --accent:#0C9C92; --accent-soft:#eafffe; --warn:#C0392B;
+    --code-bg:#f5f5f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#131312; --surface:#1c1c1a; --ink:#f0f0ee; --muted:#9a9a97; --faint:#6e6e6b;
+      --line:#2c2c2a; --accent:#2ECFC3; --accent-soft:#102a28; --warn:#E05B4A;
+      --code-bg:#0e0e0d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; padding:32px 20px 64px; background:var(--bg); color:var(--ink);
+    font:15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  h1 { font-size:26px; line-height:1.2; letter-spacing:-.02em; margin:0 0 8px; }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  .card {
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:22px; margin:0 0 20px;
+  }
+  label { display:block; font-weight:600; margin:0 0 6px; }
+  .hint { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  input[type=number] {
+    width:100%; padding:12px 14px; font-size:20px; font-weight:600;
+    border:1px solid var(--line); border-radius:10px;
+    background:var(--bg); color:var(--ink);
+  }
+  input[type=number]:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  table { width:100%; border-collapse:collapse; margin:4px 0 0; }
+  th, td { text-align:left; padding:9px 0; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; }
+  th:nth-child(2), td.val { text-align:right; padding-right:20px; white-space:nowrap; }
+  td.val { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-weight:600; }
+  td.note { color:var(--muted); font-size:13px; }
+  tr:last-child td { border-bottom:0; }
+  pre {
+    background:var(--code-bg); border:1px solid var(--line); border-radius:10px;
+    padding:16px; overflow-x:auto; margin:0;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; line-height:1.55;
+  }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px; }
+  button {
+    font:inherit; font-size:13px; font-weight:600; padding:7px 14px; cursor:pointer;
+    background:var(--ink); color:var(--bg); border:0; border-radius:999px;
+  }
+  button:active { transform:translateY(1px); }
+  .flag {
+    background:var(--accent-soft); border:1px solid var(--accent);
+    border-radius:12px; padding:14px 16px; margin:18px 0 0; font-size:14px;
+  }
+  .flag.warn { background:transparent; border-color:var(--warn); }
+  .flag b { display:block; margin:0 0 3px; }
+  a { color:var(--accent); }
+  footer { color:var(--faint); font-size:12.5px; margin:32px 0 0; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>STA/LTA parameter calculator</h1>
+  <p class="sub">Enter the sample rate your board actually measured — the firmware prints it every second as <code>rate=</code>.</p>
+
+  <div class="card">
+    <label for="fs">Measured sample rate</label>
+    <p class="hint">Not the datasheet number. The real one, from the serial output.</p>
+    <input type="number" id="fs" value="103.6" min="1" max="10000" step="0.1" autofocus>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Constant</th><th style="text-align:right">Value</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td>alphaHp</td><td class="val" id="o-alpha">—</td><td class="note">high-pass coefficient, 2π·fc/fs at fc = 0.2 Hz</td></tr>
+        <tr><td>nSta</td><td class="val" id="o-sta">—</td><td class="note">short window — 0.5 s of samples</td></tr>
+        <tr><td>nLta</td><td class="val" id="o-lta">—</td><td class="note">long window — 30 s of samples</td></tr>
+        <tr><td>warmupSamples</td><td class="val" id="o-warm">—</td><td class="note">equal to nLta; no triggers before this</td></tr>
+        <tr><td>warm-up time</td><td class="val" id="o-warmsec">—</td><td class="note">how long until the detector arms</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <strong>Paste into <code>stalta.h</code></strong>
+      <button id="copy">Copy</button>
+    </div>
+    <pre id="code">—</pre>
+  </div>
+
+  <div class="flag warn" id="golden-flag">
+    <b>Changing these breaks the golden vectors.</b>
+    The self-test values are locked to the reference constants (fs ≈ 109 Hz). Recalculate only if
+    your rate is genuinely far off — a few percent shifts the windows by a few percent, which is
+    harmless, and keeping the defaults means you can still prove your build matches the reference.
+  </div>
+
+  <div class="flag" id="advice">—</div>
+
+  <footer>
+    GeoShake DIY · <a href="https://geoshake.org/geoshake-t1">geoshake.org</a> · GPL-3.0-or-later
+  </footer>
+</div>
+
+<script>
+(function () {
+  const fsEl = document.getElementById("fs");
+  const out = {
+    alpha: document.getElementById("o-alpha"),
+    sta: document.getElementById("o-sta"),
+    lta: document.getElementById("o-lta"),
+    warm: document.getElementById("o-warm"),
+    warmsec: document.getElementById("o-warmsec"),
+    code: document.getElementById("code"),
+    advice: document.getElementById("advice"),
+  };
+  const REF_FS = 109;          // what the shipped constants assume
+  const FC = 0.2;              // high-pass corner, Hz
+  const STA_SEC = 0.5, LTA_SEC = 30;
+
+  function render() {
+    const fs = parseFloat(fsEl.value);
+    if (!(fs > 0)) return;
+
+    const alpha = (2 * Math.PI * FC) / fs;
+    const nSta = Math.round(STA_SEC * fs);
+    const nLta = Math.round(LTA_SEC * fs);
+
+    out.alpha.textContent = alpha.toFixed(6);
+    out.sta.textContent = nSta;
+    out.lta.textContent = nLta;
+    out.warm.textContent = nLta;
+    out.warmsec.textContent = (nLta / fs).toFixed(1) + " s";
+
+    out.code.textContent =
+`struct StaltaParams {
+  double alphaHp        = ${alpha.toFixed(6)};   // 2*PI*${FC}/${fs}
+  int    nSta           = ${nSta};        // ${STA_SEC} s at ${fs} Hz
+  int    nLta           = ${nLta};      // ${LTA_SEC} s at ${fs} Hz
+  double ltaMin         = 1e-8;
+  double trigger        = 6.0;
+  double detrigger      = 2.0;
+  uint32_t warmupSamples = ${nLta};
+};`;
+
+    const drift = Math.abs(fs - REF_FS) / REF_FS * 100;
+    if (drift < 8) {
+      out.advice.innerHTML =
+        "<b>You don't need these.</b> Your rate is within " + drift.toFixed(1) +
+        "% of the reference — the shipped constants already fit. Keep them, keep the golden vectors passing.";
+    } else if (drift < 30) {
+      out.advice.innerHTML =
+        "<b>Borderline.</b> You're " + drift.toFixed(0) + "% off the reference. The windows would be " +
+        "off by the same fraction — usually still fine. Recalculate only if detections feel late or twitchy.";
+    } else {
+      out.advice.innerHTML =
+        "<b>Worth recalculating.</b> At " + drift.toFixed(0) + "% off, a \"0.5 s\" window would really be " +
+        (nSta / REF_FS).toFixed(2) + " s. Use the values above — and note the golden self-test will no longer pass, " +
+        "because it locks the reference constants, not your build's.";
+    }
+  }
+
+  fsEl.addEventListener("input", render);
+  document.getElementById("copy").addEventListener("click", async function () {
+    try {
+      await navigator.clipboard.writeText(out.code.textContent);
+      this.textContent = "Copied";
+      setTimeout(() => (this.textContent = "Copy"), 1400);
+    } catch (e) {
+      this.textContent = "Select manually";
+      setTimeout(() => (this.textContent = "Copy"), 1800);
+    }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
