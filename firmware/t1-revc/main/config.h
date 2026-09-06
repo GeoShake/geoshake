@@ -11,7 +11,10 @@
 // GeoShake ORTAK sabitler (tüm cihazlarda aynı — sır değil, commit'lenir).
 // Cihaz-özel kimlik (DEVICE_ID/WiFi/MQTT user-pass) NVS'te (identity.c) + captive portal.
 #define MQTT_BROKER "mqtts://mqtt.geoshake.org:8883"
-#define FW_VERSION  "blep-0.9.2"   // + kurulum modu LED yavas blink (kurulmamis/wifi-reset -> GPIO39 500ms)
+#define FW_VERSION  "blep-0.9.4"   // + yonelim: yercekimi vektoru trigger + health yukunde (Trello #91-A)
+// 0.9.3 -> 0.9.4: yonelim eklendigi gun etiket yukseltilmemisti; iki FARKLI firmware
+// ayni "blep-0.9.3" adini tasiyordu ve filoda hangisinin nerede oldugu surumden
+// anlasilamiyordu. Ayni sinif hata #90'daki "meta veri yalan soyluyor" ile ayni.
 
 // ---- BLEPROV: mobil app BLE kurulumu (bleprov.c) ----
 // Model adi gs-info endpoint'inde app'e doner; adv prefix'i model tespiti saglar

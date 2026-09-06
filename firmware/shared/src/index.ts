@@ -12,5 +12,6 @@ export * from "./schema.js";
 export * from "./features.js";
 export * from "./geo.js";
 export * from "./stalta.js";
+export * from "./orientation.js";
 export * from "./wave.js";
 export * from "./fdsn.js";

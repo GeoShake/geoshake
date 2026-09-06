@@ -28,6 +28,54 @@ export const STALTA_PARAMS = {
   warmupSamples: 3270,    // bu kadar örnek geçene dek tetik bastırılır (~30 s, LTA dolsun)
 } as const;
 
+/**
+ * GÖLGE DEDEKTÖR PARAMETRELERİ (2026-08-25, Trello #178).
+ *
+ * NEDEN VAR: 26 günde telefonların 60 km'sinde 97 gerçek deprem (M5,8 dahil) oldu,
+ * canlı dedektör hiçbirinde tetiklemedi. Neden tetiklemediğini göremiyoruz — sunucuya
+ * yalnız tetik anındaki iki sayı gidiyor. Gölge, canlının YANINDA koşan ikinci bir
+ * STA/LTA: düşük eşik, ALARM DEĞİL, yalnız 30 s ham dalga biçimi kaydı tetikler.
+ *
+ * NEDEN AYRI PARAMETRE: STALTA_PARAMS 109 Hz T1 sensöründen kopyalandı ("~0,5 s @
+ * 109 Hz"); telefon 50 Hz'te örnekliyor → STA gerçekte 1,1 s, LTA 65 s, HP 0,09 Hz.
+ * Ölçüm (simülasyon, gerçek aritmetik): bu düzeltme TEK BAŞINA anlamsız (M5,2 oranı
+ * 3,0 → 2,2) — çözüm değil ama gölge doğru değerlerle koşmalı ki iki pencere yan
+ * yana ölçülsün. Canlı dedektör bu commit'te DEĞİŞMİYOR (canlı yol dokunulmaz).
+ *
+ * EŞİK 2,5 ÖLÇÜMLE: medyan gürültüde (0,0207 m/s²) M5,2 @ 43 km 2,7–3,0 üretiyor,
+ * M5,3 @ 59 km ~5. Hacim korkulukları fazlasını keser — bkz.
+ * docs/plans/2026-08-25-kalabalik-golge-dedektor-design.md §4. Repo dışından okuyan
+ * belgeye erişemez, o yüzden özet burada. Üçü de KODDA; cihaz tarafı henüz servise
+ * BAĞLI DEĞİL (plan Task 6 — CrowdSensorService'e bağlama), o ayrım aşağıda:
+ *   · saatlik tavan: sunucu POST /api/crowd/waveform cihaz başına saatte 2 kayıt
+ *     kabul eder (DEVICE_LIMIT=2, pencere 1 sa), fazlası 429; cihazda ShadowGate.kt
+ *     ShadowHourCounter MAX_PER_HOUR=2 aynı tavanı gönderimden ÖNCE uygular. Tasarımın
+ *     ilk metnindeki "fazlası yalnız özet gider" fikri ÇIKARILDI (YAGNI): fazlası gitmez.
+ *   · panel bayrağı: mobile_flags.shadow_waveform_enabled, varsayılan KAPALI ve
+ *     fail-closed (okunamazsa kapalı sayılır); cihaz bayrağı ≤30 dk'da tazeler
+ *     (checkFlags), yani sürüm çıkmadan filoya iner.
+ *   · sessizlik kapısı: cihaz son 5 dk'da kayıt yaptıysa yenisini almaz — ShadowGate.kt,
+ *     passesQuietGate'in ikizi (QUIET_MS = 300_000 = CROWD_QUIET_PERIOD_MS; null→geçer,
+ *     negatif→geçmez, tam sınır→geçmez; testli). Bu TS fonksiyonu BUGÜN yalnız canlı oy
+ *     yolunda (apps/assoc crowdTier) çağrılıyor; sunucunun gölge ucu sessizlik kapısı
+ *     UYGULAMAZ — tek savunma cihazda.
+ */
+export const SHADOW_STALTA_PARAMS = {
+  alphaHp: 2 * Math.PI * 0.2 / 50,   // 0,2 Hz @ 50 Hz = 0,025132741228718346
+  // SIRA ÖNEMLİ: ((2·π)·0,2)/50. Yeniden gruplama (ör. 2·π/50·0,2) 1 ULP farklı
+  // double verir (ölçüldü: 3,47e-18); Kotlin ikizi bu sırayı AYNEN yazmalı.
+  nSta: 25,                          // 0,5 s @ 50 Hz
+  nLta: 1500,                        // 30 s @ 50 Hz
+  ltaMin: 1e-8,
+  trigger: 2.5,
+  detrigger: 1.5,
+  warmupSamples: 1500,
+} as const;
+
+/** staltaStepWith'in parametre sözleşmesi: STALTA_PARAMS ile AYNI alanlar, sayı olarak
+ *  (as const literal tipleri genişletilir ki iki set de geçsin). */
+export type StaltaParams = { readonly [K in keyof typeof STALTA_PARAMS]: number };
+
 export interface StaltaState {
   dc: [number, number, number];  // eksen-başına koşan DC kestirimi (HP)
   sta: number;
@@ -44,12 +92,36 @@ export interface StaltaResult {
   pga: number;                   // |hp| büyüklüğü (tetik anı onset PGA, m/s²)
 }
 
+/** GÖLGE DE BU init'i kullanır — parametreli bir init YOK, çünkü buradan okunan tek
+ *  parametre ltaMin ve iki sette de 1e-8. SHADOW_STALTA_PARAMS.ltaMin bir gün
+ *  farklılaşırsa bu fonksiyon da parametre almalı; stalta-shadow.test.ts iki ltaMin'in
+ *  eşitliğini kilitler, yani sapma sessizce geçmez. */
 export function initStalta(): StaltaState {
   return { dc: [0, 0, 0], sta: 0, lta: STALTA_PARAMS.ltaMin, armed: true, triggered: false, count: 0 };
 }
 
-export function staltaStep(s: StaltaState, sample: number[]): StaltaResult {
-  const P = STALTA_PARAMS;
+/**
+ * Parametreli adım — staltaStep'in aritmetiğinin BİREBİR aynısı, P dışarıdan gelir.
+ * staltaStep bunu STALTA_PARAMS ile çağırır (tek gövde, iki giriş; ayrışamaz).
+ *
+ * P'nin HER alanının gerçekten BURADAN okunduğunu stalta-shadow.test.ts kilitler:
+ * yedi alan tek tek ezilir, sonuç değişmezse test kırılır — yedi mutasyonun yedisi de
+ * öldürüldü (ölçüldü). Hangisinin nerede öldüğü EŞİT DEĞİL, çünkü hepsi davranışa
+ * aynı güçte yansımıyor:
+ *   · nSta/nLta ayrıca DAVRANIŞSAL testte de ölür (gölge darbeyi canlıdan önce görür).
+ *   · warmupSamples ayrıca warmup testinde ölür.
+ *   · alphaHp/trigger/detrigger yalnız o sentetik ezme testinde ölür.
+ *   · ltaMin EŞDEĞER MUTANT: iki sette de 1e-8, yani `P.ltaMin`i `STALTA_PARAMS.ltaMin`
+ *     yapmak sahada hiçbir şeyi değiştirmez. Onu yalnız sentetik ezme yakalar; asıl
+ *     koruma, iki değerin eşitliğini kilitleyen ltaMin testidir.
+ *
+ * İKİZLER (ikisi de artık MEVCUT):
+ *   · Kotlin ikizi: StaLtaDetectorP (StaLta.kt) — parametreli; canlı yol için mevcut
+ *     StaLtaDetector korundu (CrowdSensorService onu kullanmaya devam ediyor).
+ *   · Golden fixture (crowd-golden.json) iki seti de kilitler: staltaParams/stalta
+ *     canlı, shadowStaltaParams/shadowStalta gölge; aynı girdi vektörü.
+ */
+export function staltaStepWith(s: StaltaState, sample: number[], P: StaltaParams): StaltaResult {
   const ax = (sample[0] + sample[3] + sample[6] + sample[9]) / 4;
   const ay = (sample[1] + sample[4] + sample[7] + sample[10]) / 4;
   const az = (sample[2] + sample[5] + sample[8] + sample[11]) / 4;
@@ -72,4 +144,8 @@ export function staltaStep(s: StaltaState, sample: number[]): StaltaResult {
   }
   if (triggered && ratio <= P.detrigger) { triggered = false; armed = true; }
   return { state: { dc, sta, lta, armed, triggered, count }, fired, ratio, pga: Math.sqrt(cf) };
+}
+
+export function staltaStep(s: StaltaState, sample: number[]): StaltaResult {
+  return staltaStepWith(s, sample, STALTA_PARAMS);
 }

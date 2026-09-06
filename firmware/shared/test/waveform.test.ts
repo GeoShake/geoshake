@@ -17,6 +17,22 @@ describe("Waveform", () => {
   it("geçerli dalga formu", () => { expect(Waveform.parse(wf)).toEqual(wf); });
   it("boş örnek dizisi geçerli", () => { expect(Waveform.parse({ ...wf, samples: [] }).samples).toEqual([]); });
   it("fs pozitif olmalı", () => { expect(() => Waveform.parse({ ...wf, fs: 0 })).toThrow(); });
+
+  // BOŞLUK SÖZLEŞMESİ (kurucu kararı 2026-08-05): eksik örnek null olarak taşınır — 0'a
+  // çevrilmez. Şema null'ı KABUL eder, NaN/±Infinity'yi ETMEZ (eşleyici onları null'a çevirir).
+  it("null örnek geçerli (kayıt boşluğu — 'ölçüm sıfır' değil)", () => {
+    expect(Waveform.parse({ ...wf, samples: [0.01, null, -0.15] }).samples).toEqual([0.01, null, -0.15]);
+  });
+  it("tümü null geçerli (hiç örnek kaydedilememiş pencere)", () => {
+    expect(Waveform.parse({ ...wf, samples: [null, null] }).samples).toEqual([null, null]);
+  });
+  it("NaN/Infinity örnek reddedilir", () => {
+    expect(() => Waveform.parse({ ...wf, samples: [NaN] })).toThrow();
+    expect(() => Waveform.parse({ ...wf, samples: [Infinity] })).toThrow();
+  });
+  it("örnek metin olamaz (tip gevşemesi null İLE SINIRLI)", () => {
+    expect(() => Waveform.parse({ ...wf, samples: ["0.01"] })).toThrow();
+  });
 });
 describe("StationDetail.waveform opsiyonel", () => {
   it("waveform'suz geçerli (sim istasyon)", () => { expect(StationDetail.parse(stBase).waveform).toBeUndefined(); });

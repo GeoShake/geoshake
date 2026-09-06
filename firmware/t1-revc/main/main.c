@@ -70,6 +70,9 @@ static const double SCALE = (4.0 * 9.80665) / 65536.0;
 static const char *TAG = "geoshake";
 static spi_device_handle_t s_dev[4];
 static TaskHandle_t s_sample_task;
+/* mqtt_task handle'i: stack yuksek-su olcumu icin. Buyutulen JSON
+   tamponlari (tb[192], buf[320]) bu task'in stack'inde duruyor. */
+static TaskHandle_t s_mqtt_task;
 
 /* ---- Cihaz kimligi (runtime NVS) + MQTT topic tamponlari ----
    g_id N1-T2'de app_main'de gs_identity_load ile dolar; bu fazda zero-init (bos)
@@ -280,6 +283,39 @@ static int s_last_n = 0;
 static double s_last_fs = 0;
 static volatile uint32_t s_feat_seq = 0;  /* her yeni pencere artar */
 
+/* ---- Yonelim (orientation): son pencerenin 4-sensor ortalanmis yercekimi (DC) vektoru, m/s^2 ----
+   Pencere kapanisinda gravity ZATEN mean[12] olarak hesaplaniyor ve atiliyordu; artik
+   saklaniyor. Duran bir ivmeolcerde bu vektor DOGRUDAN cihazin yonelimidir:
+   duz masa -> |gz| ~ 9.81, X/Y ~ 0;  duvar -> yatay eksenlerden biri ~ 9.81, gz ~ 0.
+   Kullaniciya "duvara mi monte ettin" diye sormaya gerek yok; cihaz tasinirsa kendi gunceller.
+   Tespit yoluna (STA/LTA) DOKUNMAZ — yalniz mean[] okunur, hicbir sey degistirilmez.
+   Yazan: sample_task (core1), s_feat_seq seqlock'unun ICINDE (s_last_feat ile ayni bolum).
+   Okuyan: mqtt_task (core0, health) + sample_task (tetik). grav_suffix seqlock'u uygular.
+   Ilk pencere kapanana kadar s_grav_ok=false -> alan pakete HIC eklenmez (sahte [0,0,0] yok). */
+static float s_last_grav[3] = {0, 0, 0};
+static volatile bool s_grav_ok = false;
+
+/* Yonelim JSON ekini kur (trig + health ORTAK tek-kaynak): ",\"grav\":[x,y,z]" ya da BOS string.
+   Bos donmesi normaldir (ilk pencere oncesi) — alan OPSIYONEL, paket yine gecerli JSON.
+   %.3f: 0.001 m/s^2 ~ 1.7 LSB; tuketicideki egim cozunurlugu atan(0.001/9.81) ~ 0.006 deg
+   -> siniflandirma icin fazlasiyla yeterli, payload maliyeti minimum (+28 byte/paket).
+   Donus: yazilan uzunluk (0 = ek yok). Tasma/kodlama hatasi -> ek atlanir (paket bozulmaz). */
+static int grav_suffix(char *out, size_t cap) {
+    if (cap == 0) return 0;
+    out[0] = '\0';
+    if (!s_grav_ok) return 0;
+    /* seqlock: s_last_feat okumasiyla AYNI idiom — pencere sinirinda yirtik vektor okunmaz. */
+    uint32_t seq; float g[3];
+    do { seq = s_feat_seq; memcpy(g, s_last_grav, sizeof(g)); } while (seq != s_feat_seq);
+    int len = snprintf(out, cap, ",\"grav\":[%.3f,%.3f,%.3f]", g[0], g[1], g[2]);
+    if (len < 0 || (size_t)len >= cap) { out[0] = '\0'; return 0; }
+    return len;
+}
+
+/* Tetik yuku TEK-KAYNAK format: tasma halinde yonelim eki OLMADAN ayni formatla yeniden
+   kurulur (iki yerde ayri literal tutulup drift etmesin). Son %s = grav_suffix ciktisi. */
+#define TRIG_FMT "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"sta_lta\":%.3f,\"pga\":%.6f%s}"
+
 #define WIFI_FALLBACK_TIMEOUT_MS 60000  /* N2d: boot'ta hic IP yoksa captive */
 
 /* WiFi/zaman durumu (status task okur) */
@@ -414,11 +450,30 @@ static void sample_task(void *arg) {
             stalta_out_t det = stalta_step(&s_stalta, s12d);
             if (det.fired && ep_ms > 0 && s_mqtt_up) {
                 uint32_t used_seq = s_trig_seq++;
-                char tb[160];
-                int len = snprintf(tb, sizeof(tb),
-                    "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"sta_lta\":%.3f,\"pga\":%.6f}",
-                    g_id.device_id, (unsigned long)used_seq, (long long)ep_ms, det.ratio, det.pga);
-                esp_mqtt_client_publish(s_mqtt, g_topic_trig, tb, len, 1, 0);
+                char gsuf[40];                 /* ",\"grav\":[-19.613,-19.613,-19.613]" = 33 + NUL */
+                grav_suffix(gsuf, sizeof(gsuf));
+                /* tb[] boy butcesi — host'ta snprintf ile OLCULDU (tahmin degil):
+                     saha (GEO-XXXXX):  eksiz  86 -> grav'li 114 byte
+                     en kotu hal     :  eksiz 134 -> grav'li 167 (+NUL 168)
+                       [dev 31, seq 2^32-1, t_ms int64-max, sta_lta 1.15e11 (sta<=3*(2g)^2,
+                        lta>=1e-8), pga 33.97, grav bilesenleri +-2g doygun]
+                   160 YETMEZDI (167 > 159) -> 192 (24 byte pay). */
+                char tb[192];
+                int len = snprintf(tb, sizeof(tb), TRIG_FMT,
+                    g_id.device_id, (unsigned long)used_seq, (long long)ep_ms,
+                    det.ratio, det.pga, gsuf);
+                if (len < 0 || len >= (int)sizeof(tb)) {
+                    /* Beklenmedik tasma: tetigi ASLA dusurme (sismik olarak kritik) —
+                       opsiyonel yonelim ekini atip yeniden kur (eksiz hal <=134 byte, kesin sigar). */
+                    ESP_LOGW(TAG, "trigger payload too long (%d) - republishing without orientation", len);
+                    len = snprintf(tb, sizeof(tb), TRIG_FMT,
+                        g_id.device_id, (unsigned long)used_seq, (long long)ep_ms,
+                        det.ratio, det.pga, "");
+                }
+                if (len > 0 && len < (int)sizeof(tb))
+                    esp_mqtt_client_publish(s_mqtt, g_topic_trig, tb, len, 1, 0);
+                else
+                    ESP_LOGE(TAG, "trigger payload encode failed (%d) - dropped", len);
                 ESP_LOGW(TAG, "TRIGGER! ratio=%.2f pga=%.4f t_ms=%lld", det.ratio, det.pga, (long long)ep_ms);
                 s_trig_flash_ms = esp_timer_get_time() / 1000;  /* led_task ile AYNI monotonic taban → burst ~LED_BURST_MS sonra soner (epoch-ms degil) */
                 if (!wave_on) {   /* olay-öncesi ring'i wave_buf'a kronolojik kopyala */
@@ -598,6 +653,13 @@ static void sample_task(void *arg) {
             s_last_feat = f;             /* B3 MQTT publish bunu kullanacak */
             s_last_n = n;
             s_last_fs = n / elapsed;
+            /* Yonelim: cikarilan gravity'yi atma — 4 sensoru compute_features/stalta_step ile
+               AYNI op-order'da ortala. mean[] SALT-OKUNUR kullanilir; ozellik/tespit yolu
+               degismez (golden'lar etkilenmez). s_feat_seq++ ONCESI yazilir -> seqlock butun. */
+            s_last_grav[0] = (float)((mean[0] + mean[3] + mean[6] + mean[9])  / 4.0);
+            s_last_grav[1] = (float)((mean[1] + mean[4] + mean[7] + mean[10]) / 4.0);
+            s_last_grav[2] = (float)((mean[2] + mean[5] + mean[8] + mean[11]) / 4.0);
+            s_grav_ok = true;
             s_feat_seq++;
             ESP_LOGI(TAG, "feat n=%d fs=%.1f rms=%.5f,%.5f,%.5f pga=%.5f",
                      n, s_last_fs, f.rms[0], f.rms[1], f.rms[2], f.pga);
@@ -713,12 +775,23 @@ static void status_task(void *arg) {
         int8_t rssi = 0;
         wifi_ap_record_t ap;
         if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) rssi = ap.rssi;
-        ESP_LOGI(TAG, "wifi=%s ip=" IPSTR " ntp=%s mqtt=%s mrc=%lu rssi=%d rc=%lu fs~%.1fHz heap=%lu",
+        /* Stack yuksek-su seviyesi (KALAN bos bayt, en kotu ana kadar).
+           Bu projede sahada bir stack overflow yasandi (TLS main task'ta
+           calisiyordu, 3584 B yetmedi -> ayri 8 KB'lik task'a alindi).
+           O yuzden yeni bir alan eklendiginde "hesapla guvenli" demek
+           yetmiyor; olculebilir olmali. Maliyeti bir sayac okumasi.
+           sample = sismik dongu, self = bu status task'i.
+           Alarm esigi: 512 B'nin altina inerse bakilmali. */
+        UBaseType_t hw_sample = s_sample_task ? uxTaskGetStackHighWaterMark(s_sample_task) : 0;
+        UBaseType_t hw_self   = uxTaskGetStackHighWaterMark(NULL);
+        UBaseType_t hw_mqtt   = s_mqtt_task ? uxTaskGetStackHighWaterMark(s_mqtt_task) : 0;
+        ESP_LOGI(TAG, "wifi=%s ip=" IPSTR " ntp=%s mqtt=%s mrc=%lu rssi=%d rc=%lu fs~%.1fHz heap=%lu stack sample=%u mqtt=%u status=%u",
                  s_wifi_up ? "UP" : "DOWN", IP2STR(&s_ip),
                  time_synced() ? "synced" : "bekliyor",
                  s_mqtt_up ? "UP" : "DOWN", (unsigned long)s_mqtt_rc, rssi,
                  (unsigned long)s_wifi_rc, (s - last) / 5.0,
-                 (unsigned long)esp_get_free_heap_size());
+                 (unsigned long)esp_get_free_heap_size(),
+                 (unsigned)hw_sample, (unsigned)hw_mqtt, (unsigned)hw_self);
         last = s;
     }
 }
@@ -895,7 +968,12 @@ static int64_t now_ms(void) {
 }
 
 static void mqtt_task(void *arg) {
-    char buf[256];
+    /* buf[] boy butcesi — health en uzun yuk; host'ta snprintf ile OLCULDU (tahmin degil):
+         saha (GEO-XXXXX): eksiz 171 -> grav'li 199 byte
+         en kotu hal     : grav'li 284 (+NUL 285)  [dev 31, sayaclar 2^32-1, t_ms int64-max,
+                           fw 25, gain 4x2.0 (cal.h clamp), grav bilesenleri +-2g doygun]
+       256 YETMEZDI (284 > 255) -> 320 (35 byte pay). feat yuku en kotu 165, ayni tamponda sigar. */
+    char buf[320];
     uint32_t last_feat = 0, pubseq = 0, hseq = 0;
     int64_t last_health = -30000000;  /* ilk health hemen gitsin */
     for (;;) {
@@ -935,15 +1013,22 @@ static void mqtt_task(void *arg) {
             int8_t rssi = 0;
             wifi_ap_record_t ap;
             if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) rssi = ap.rssi;
+            /* Yonelim health'te de gider: tetik nadirdir, oysa "cihaz tasindi" bilgisi 30 s
+               icinde guncellenmeli. gain ile ayni yer/gerekce (yavas degisen cihaz ozelligi). */
+            char gsuf[40];
+            grav_suffix(gsuf, sizeof(gsuf));
             int len = snprintf(buf, sizeof(buf),
                 "{\"v\":1,\"dev\":\"%s\",\"seq\":%lu,\"t_ms\":%lld,\"up_s\":%lu,\"heap\":%lu,"
                 "\"rssi\":%d,\"wifi_rc\":%lu,\"mqtt_rc\":%lu,\"fw\":\"%s\","
-                "\"gain\":[%.4f,%.4f,%.4f,%.4f]}",
+                "\"gain\":[%.4f,%.4f,%.4f,%.4f]%s}",
                 g_id.device_id, (unsigned long)hseq++, (long long)now_ms(),
                 (unsigned long)(t / 1000000), (unsigned long)esp_get_free_heap_size(),
                 rssi, (unsigned long)s_wifi_rc, (unsigned long)s_mqtt_rc, FW_VERSION,
-                s_cal_gain[0], s_cal_gain[1], s_cal_gain[2], s_cal_gain[3]);
-            esp_mqtt_client_publish(s_mqtt, g_topic_health, buf, len, 0, 0);
+                s_cal_gain[0], s_cal_gain[1], s_cal_gain[2], s_cal_gain[3], gsuf);
+            if (len > 0 && len < (int)sizeof(buf))
+                esp_mqtt_client_publish(s_mqtt, g_topic_health, buf, len, 0, 0);
+            else
+                ESP_LOGE(TAG, "health payload encode failed (%d) - dropped", len);
         }
     }
 }
@@ -1195,7 +1280,7 @@ void app_main(void) {
     xTaskCreate(wifi_guard_task, "wifi_guard", 4096, NULL, 4, NULL);  /* N2d: 60sn WiFi-fallback watchdog */
     mqtt_start();
     xTaskCreate(status_task, "status", 4096, NULL, 5, NULL);
-    xTaskCreate(mqtt_task, "mqtt", 4096, NULL, 6, NULL);
+    xTaskCreate(mqtt_task, "mqtt", 4096, NULL, 6, &s_mqtt_task);
     led_init();   /* durum LED'i (GPIO39, LEDC PWM) */
     xTaskCreatePinnedToCore(led_task, "led", 2048, NULL, 3, NULL, 0);
 

@@ -18,3 +18,27 @@ describe("TriggerPacket", () => {
   it("Infinity pga reddedilir", () => { expect(() => TriggerPacket.parse({ ...good, pga: 1e400 })).toThrow(); });
   it("kötü dev reddedilir", () => { expect(() => TriggerPacket.parse({ ...good, dev: "x!" })).toThrow(); });
 });
+
+// grav = 4-sensör ortalanmış yerçekimi (DC) vektörü, m/s². OPSİYONEL: sahadaki eski
+// firmware göndermez; zorunlu yapılırsa o cihazların TÜM tetikleri reddedilir (assoc'a
+// hiç tetik düşmez → deprem asosiyasyonu durur). Bu yüzden .optional() KALDIRMA.
+describe("TriggerPacket.grav (yönelim)", () => {
+  it("grav'lı tetik geçerli — değer korunur", () => {
+    const t = { ...good, grav: [0.02, -0.01, 9.79] };
+    expect(TriggerPacket.parse(t)).toEqual(t);
+  });
+  it("grav'sız tetik geçerli (eski firmware — KRİTİK geri uyumluluk)", () => {
+    expect("grav" in TriggerPacket.parse(good)).toBe(false);
+  });
+  it("NEGATİF bileşen kabul edilir (ters/duvar montaj)", () => {
+    const t = { ...good, grav: [-9.79, 0.1, -0.05] };
+    expect(TriggerPacket.parse(t)).toEqual(t);
+  });
+  it("3 eleman değilse reddedilir", () => {
+    expect(() => TriggerPacket.parse({ ...good, grav: [1, 2] })).toThrow();
+    expect(() => TriggerPacket.parse({ ...good, grav: [1, 2, 3, 4] })).toThrow();
+  });
+  it("Infinity bileşen reddedilir", () => {
+    expect(() => TriggerPacket.parse({ ...good, grav: [1e400, 0, 9.8] })).toThrow();
+  });
+});

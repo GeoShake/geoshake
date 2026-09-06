@@ -400,7 +400,7 @@ Here's the honest comparison:
 you're buying isn't the hardware — it's validation and the other stations.
 
 The app is free either way: [geoshake.org/download](https://geoshake.org/download).
-Watch the live network at [stations.geoshake.org](https://stations.geoshake.org).
+Watch the live network at [map.geoshake.org](https://map.geoshake.org).
 
 > 📬 **Built it? Get the parameter calculator.** Drop your email at
 > [geoshake.org/diy](https://geoshake.org/diy) and we'll send the calculator that

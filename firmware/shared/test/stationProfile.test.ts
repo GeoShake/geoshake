@@ -33,4 +33,45 @@ describe("StationProfile", () => {
     const p = StationProfile.parse({ ...base, events: [{ eventId: 8, originMs: 1718539200000, intensityClass: "orta" }] });
     expect(p.events[0].intensityClass).toBe("orta");
   });
+
+  // YÖNELİM (#91-A). .optional() SAHA-KRİTİK: alanı göndermeyen eski firmware'lerin
+  // istasyon sayfası aksi halde .parse'ta 500 verirdi (fail-loud buildStationProfile).
+  describe("health.tiltDeg / health.mountClass", () => {
+    const h = { rssi: -69, uptimeS: 8434, freeHeap: 180772, fwVersion: "1.0.0", lastHealthMs: 1718539200000 };
+
+    it("yönelimsiz health geçerli (alanlar undefined)", () => {
+      const p = StationProfile.parse({ ...base, health: h });
+      expect(p.health?.mountClass).toBeUndefined();
+      expect(p.health?.tiltDeg).toBeUndefined();
+    });
+    it("yönelimli health korunur", () => {
+      const p = StationProfile.parse({ ...base, health: { ...h, tiltDeg: 88.4, mountClass: "duvar" } });
+      expect(p.health?.tiltDeg).toBeCloseTo(88.4, 6);
+      expect(p.health?.mountClass).toBe("duvar");
+    });
+    it("üç sınıf da kabul edilir; başka değer reddedilir", () => {
+      for (const m of ["duz", "duvar", "egik"]) {
+        expect(StationProfile.parse({ ...base, health: { ...h, mountClass: m } }).health?.mountClass).toBe(m);
+      }
+      expect(() => StationProfile.parse({ ...base, health: { ...h, mountClass: "flat" } })).toThrow();
+    });
+    it("tiltDeg sözleşme aralığı 0..180 dışında reddedilir", () => {
+      expect(() => StationProfile.parse({ ...base, health: { ...h, tiltDeg: 181 } })).toThrow();
+      expect(() => StationProfile.parse({ ...base, health: { ...h, tiltDeg: -1 } })).toThrow();
+    });
+
+    // grav: 3B duruş çiziminin yatma YÖNÜ kaynağı. FeaturePacket/HealthPacket ile AYNI
+    // gravVector şeması — bileşenler İŞARETLİDİR (duvar/ters montajda negatif).
+    it("grav'sız health geçerli (alan undefined — eski firmware)", () => {
+      expect(StationProfile.parse({ ...base, health: h }).health?.grav).toBeUndefined();
+    });
+    it("grav korunur; negatif bileşen kabul edilir", () => {
+      const p = StationProfile.parse({ ...base, health: { ...h, grav: [-9.79, 0.2, -0.4] } });
+      expect(p.health?.grav).toEqual([-9.79, 0.2, -0.4]);
+    });
+    it("uzunluğu 3 olmayan / sonlu olmayan grav reddedilir", () => {
+      expect(() => StationProfile.parse({ ...base, health: { ...h, grav: [1, 2] } })).toThrow();
+      expect(() => StationProfile.parse({ ...base, health: { ...h, grav: [1, 2, Infinity] } })).toThrow();
+    });
+  });
 });

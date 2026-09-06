@@ -18,7 +18,7 @@
 // Kısıtlar:
 //   • Firmware buffer'ları device_id[32] + mqtt_user[32] (=device_id) → 31 karakter sınırı. gs- (max 31)
 //     ve GEO-XXXXX (9) ikisi de sığar.
-//   • device_id ":" İÇEREMEZ (sunucu tarafı kimlik türetmesinde alan ayracı olarak kullanılır).
+//   • device_id ":" İÇEREMEZ → deriveMqttPassword/deriveClaimProof "mqtt:"/"claim:" uzayları ayrık kalır.
 //   • GEO- BÜYÜK harf (üretim büyük harf); gs- küçük harf (eski). Karışmasın diye case-strict.
 
 /** Anchor'SUZ iç pattern — topic regex'lerine gömmek için (ingest/assoc `geoshake/<id>/...`). Non-capturing. */
