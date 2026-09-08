@@ -5,3 +5,6 @@ Thumbs.db
 # Asla yayinlanmaz — secrets.h gitignore'lu, .example yayinlanir
 secrets.h
 !secrets.h.example
+
+# Bagimlilik agaci asla yayinlanmaz
+node_modules/
