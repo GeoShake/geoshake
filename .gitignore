@@ -1,3 +1,7 @@
 .DS_Store
 *.swp
 Thumbs.db
+
+# Asla yayinlanmaz — secrets.h gitignore'lu, .example yayinlanir
+secrets.h
+!secrets.h.example
