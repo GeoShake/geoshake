@@ -1,0 +1,68 @@
+**This repository is multi-licensed.** The root `LICENSE` file is the
+GPL-3.0 text that covers the firmware and software, because that is what
+GitHub reads. It does **not** cover everything here. The enclosure designs
+are CC BY-SA 4.0, the data is CC BY 4.0, and the GeoShake name and marks are
+not licensed at all. This file is the authoritative overview.
+
+GeoShake — Licensing Overview
+=============================
+
+Copyright (c) 2024-2026 Appflows Teknoloji A.S.
+
+GeoShake ships open source firmware and open enclosure designs. Different
+parts of this repository use different licenses:
+
+1. FIRMWARE & SOFTWARE (everything under /firmware, including the
+   TypeScript DSP reference in /firmware/shared)
+   License: GNU General Public License v3.0 or later
+   SPDX-License-Identifier: GPL-3.0-or-later
+   Full text: firmware/LICENSE
+
+2. ENCLOSURE DESIGNS (everything under /hardware/enclosure: STL, STEP,
+   Fusion 360 sources, printing documentation)
+   License: Creative Commons Attribution-ShareAlike 4.0 International
+   SPDX-License-Identifier: CC-BY-SA-4.0
+   Full text: hardware/enclosure/LICENSE
+
+3. DOCUMENTATION & IMAGES (everything under /docs and /assets,
+   unless a file states otherwise)
+   License: Creative Commons Attribution-ShareAlike 4.0 International
+   SPDX-License-Identifier: CC-BY-SA-4.0
+   Full text: docs/LICENSE
+
+4. SEISMIC DATA (the GeoShake network's event catalogue, station
+   metadata, ground-motion features and waveforms, however obtained)
+   License: Creative Commons Attribution 4.0 International
+   SPDX-License-Identifier: CC-BY-4.0
+   Full text: data/LICENSE
+
+What this means in practice:
+- You may study, modify, build, distribute and sell devices based on the
+  firmware and enclosure designs, including commercially, and you may use
+  the data freely including in commercial and academic work.
+- The firmware (GPL-3.0) and the enclosure designs (CC BY-SA 4.0) are
+  share-alike: if you distribute modified versions, you must publish your
+  modifications under the same license. The data (CC BY 4.0) is not
+  share-alike — attribution is all it asks.
+- You must keep the copyright notices and license notices intact.
+
+NOT COVERED BY THESE LICENSES
+-----------------------------
+
+PCB design. The GeoShake T1 circuit board design, schematics and Gerber
+files are proprietary and are not published in this repository. The
+device as a whole is therefore not open source hardware.
+
+Network services. The GeoShake cloud, verification backend, station map,
+mobile app services and MQTT broker are operated by Appflows Teknoloji
+A.S. and are not covered by these licenses. Access to the official
+network requires credentials issued via
+https://geoshake.org/join-network.
+
+Trademarks. "GeoShake", the GeoShake logo and the wave device are
+trademarks of Appflows Teknoloji A.S. and are expressly excluded from
+the licenses above. See TRADEMARKS.md.
+
+Seismic data is openly licensed (CC BY 4.0, see data/LICENSE) but the
+services that deliver it are operated on a best-effort basis. Access and
+documentation: https://api.geoshake.org/developer

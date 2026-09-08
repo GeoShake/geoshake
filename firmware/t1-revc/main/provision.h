@@ -12,18 +12,18 @@
 #include "esp_err.h"
 #include "identity.h"
 
-/* ---- GH-DEVPROV Katman 2: cihaz SELF-provisioning (B1 claim-token) ----
-   Cihaz MQTT kimligi YOKKEN ama device_id+claim_proof VARKEN ve WiFi bagliyken
-   cloud'dan MQTT credential'ini KENDI alir:
+/* ---- GH-DEVPROV Layer 2: device SELF-provisioning (B1 claim token) ----
+   While the device has NO MQTT identity but DOES HAVE device_id+claim_proof and WiFi is
+   connected, it fetches the MQTT credential from the cloud BY ITSELF:
 
      POST https://api.geoshake.org/api/device/provision  {device_id, claim_proof}
-       200 {mqttUser, mqttPass, broker, port} → NVS'e (gs_identity_save_mqtt) yaz.
-       401 → claim gecersiz (secret uyusmuyor / yanlis device_id).
+       200 {mqttUser, mqttPass, broker, port} → write to NVS (gs_identity_save_mqtt).
+       401 → invalid claim (secret does not match / wrong device_id).
 
-   Onkosul: WiFi ZATEN bagli (STA, GOT_IP). Cagiran (app_main provision dali) once
-   WiFi'yi baslatip IP bekler, sonra bunu cagirir. Basari → cagiran esp_restart eder
-   (reboot sonrasi mqtt_ready → normal boot). Sir (claim_proof/mqttPass) LOGLANMAZ.
+   Precondition: WiFi is ALREADY connected (STA, GOT_IP). The caller (the app_main provision
+   branch) first starts WiFi and waits for an IP, then calls this. On success → the caller does
+   esp_restart (after the reboot mqtt_ready → normal boot). Secrets (claim_proof/mqttPass) are NOT LOGGED.
 
-   Donus: ESP_OK (mqtt NVS yazildi) | ESP_FAIL (HTTP/parse/kaydetme hatasi — cagiran
-   backoff ile yeniden dener) | ESP_ERR_INVALID_ARG (claim_ready degil). */
+   Returns: ESP_OK (mqtt written to NVS) | ESP_FAIL (HTTP/parse/save error — the caller
+   retries with backoff) | ESP_ERR_INVALID_ARG (not claim_ready). */
 esp_err_t gs_provision_run(const gs_identity_t *id);

@@ -24,19 +24,19 @@
 
 static const char *TAG = "bleprov";
 
-/* Alinan cred'ler CRED_RECV'de buraya kopyalanir; YALNIZ CRED_SUCCESS'te (cihaz gercekten
-   baglandi) NVS'e yazilir. Yanlis sifre diske hic inmez -> boot-loop/inplace-captive'e
-   dusme riski yok. wifi_sta_config_t alanlari max-uzunlukta NUL'suz olabilir -> boyutlu
-   kopya + elle NUL (identity.h tampon sozlesmesi: ssid<=32, pass<=64 + NUL). */
+/* The received creds are copied here in CRED_RECV; they are written to NVS ONLY in CRED_SUCCESS
+   (the device really did connect). A wrong password never reaches the disk -> no risk of falling
+   into a boot loop / in-place captive. wifi_sta_config_t fields may be at max length without a NUL
+   -> sized copy + manual NUL (the identity.h buffer contract: ssid<=32, pass<=64 + NUL). */
 static char s_ssid[33];
 static char s_pass[65];
-static bool s_saved = false;              /* SUCCESS'te NVS yazildi -> END'de restart */
-static const gs_identity_t *s_id = NULL;  /* app_main'in static g_id'si (yasam suresi guvenli) */
+static bool s_saved = false;              /* NVS was written on SUCCESS -> restart on END */
+static const gs_identity_t *s_id = NULL;  /* app_main's static g_id (lifetime is safe) */
 
-/* ---- custom endpoint "gs-info": cihaz kimligi (SIFRELI protocomm oturumu icinden) ----
-   Istek govdesi yok sayilir; yanit JSON. claim_code NVS'te yoksa "" doner — app o zaman
-   etiketten elle kod ister (eski cihazlar). protocomm outbuf'u kendisi free eder (IDF
-   custom_prov ornegi sozlesmesi: handler malloc'lar, framework gonderip birakir). */
+/* ---- custom endpoint "gs-info": device identity (from inside the ENCRYPTED protocomm session) ----
+   The request body is ignored; the response is JSON. If claim_code is not in NVS it returns "" — the
+   app then asks for the code from the label by hand (older devices). protocomm frees outbuf itself
+   (the IDF custom_prov example contract: the handler mallocs, the framework sends and releases). */
 static esp_err_t gs_info_handler(uint32_t session_id, const uint8_t *inbuf, ssize_t inlen,
                                  uint8_t **outbuf, ssize_t *outlen, void *priv_data) {
     (void)session_id; (void)inbuf; (void)inlen; (void)priv_data;
@@ -49,18 +49,18 @@ static esp_err_t gs_info_handler(uint32_t session_id, const uint8_t *inbuf, ssiz
     char *out = cJSON_PrintUnformatted(j);
     cJSON_Delete(j);
     if (out == NULL) return ESP_ERR_NO_MEM;
-    *outbuf = (uint8_t *)out;             /* cJSON malloc'u — protocomm free eder */
-    /* strlen (NUL'suz): protocomm length-delimited — +1 (NUL dahil) gonderilirse app
-       tarafinda JSON.parse "\0" yuzunden patlar (F4 e2e bulgusu; app ayrica tolere eder). */
+    *outbuf = (uint8_t *)out;             /* cJSON's malloc — protocomm frees it */
+    /* strlen (without the NUL): protocomm is length-delimited — if +1 (including the NUL) is sent,
+       JSON.parse on the app side blows up because of the "\0" (F4 e2e finding; the app also tolerates it). */
     *outlen = strlen(out);
     return ESP_OK;
 }
 
-/* ---- wifi_prov_mgr yasam dongusu olaylari ----
-   RECV -> cred'i tamponla (yazma YOK). SUCCESS -> NVS'e yaz (dogrulanmis cred).
-   FAIL -> state-machine resetle (app ayni oturumda tekrar deneyebilir; auth/ap-not-found
-   nedeni app'e protocomm'dan zaten gider). END -> yalniz kayit olduysa restart (app son
-   "connected" durumunu BLE'den OKUDUKTAN sonra END gelir; erken restart app'i kor birakirdi). */
+/* ---- wifi_prov_mgr lifecycle events ----
+   RECV -> buffer the cred (NO write). SUCCESS -> write to NVS (the verified cred).
+   FAIL -> reset the state machine (the app can retry in the same session; the auth/ap-not-found
+   reason already reaches the app through protocomm). END -> restart only if something was saved (END
+   arrives AFTER the app has READ the final "connected" state over BLE; an early restart would leave the app blind). */
 static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     (void)arg; (void)base;
     switch (id) {
@@ -82,18 +82,18 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         const wifi_prov_sta_fail_reason_t *r = (const wifi_prov_sta_fail_reason_t *)data;
         ESP_LOGW(TAG, "connect FAIL: %s - the app may retry (nothing written to NVS)",
                  (r && *r == WIFI_PROV_STA_AUTH_ERROR) ? "yanlis sifre (auth)" : "AP bulunamadi");
-        /* Resetle ki app yeni cred gonderebilsin (yoksa mgr 'failed' durumunda takili kalir). */
+        /* Reset so the app can send a new cred (otherwise mgr stays stuck in the 'failed' state). */
         wifi_prov_mgr_reset_sm_state_on_failure();
         break;
     }
     case WIFI_PROV_CRED_SUCCESS: {
-        /* Cihaz aga GERCEKTEN baglandi -> cred dogrulandi -> simdi kalici yaz. */
+        /* The device REALLY connected to the network -> the cred is verified -> now write it persistently. */
         esp_err_t e = gs_identity_save_wifi(s_ssid, s_pass);
         if (e == ESP_OK) {
             s_saved = true;
             ESP_LOGW(TAG, "WiFi verified + saved (ssid=%s) - reboot after the app confirms", s_ssid);
         } else {
-            /* Yazilamadi: restart ETME (yeniden ayni captive/BLE dalina doner, kullanici tekrar dener). */
+            /* Could not write: do NOT restart (it would return to the same captive/BLE branch, the user tries again). */
             ESP_LOGE(TAG, "gs_identity_save_wifi FAIL: %s", esp_err_to_name(e));
         }
         break;
@@ -101,7 +101,7 @@ static void prov_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     case WIFI_PROV_END:
         if (s_saved) {
             ESP_LOGW(TAG, "provisioning done - rebooting for a normal boot");
-            vTaskDelay(pdMS_TO_TICKS(500));   /* son BLE bildirimi + log flush */
+            vTaskDelay(pdMS_TO_TICKS(500));   /* the final BLE notification + log flush */
             esp_restart();
         }
         ESP_LOGI(TAG, "provisioning session ended (nothing saved) - portal/BLE still waiting");
@@ -115,17 +115,17 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
     if (id == NULL) return ESP_ERR_INVALID_ARG;
     s_id = id;
 
-    /* STA netif: prov mgr tarama + baglanti denemesi icin gerekli. Captive dallarinda
-       wifi_start() hic kosmaz -> STA netif yok; olustur. (In-place fallback'te wifi_start
-       olusturmustu -> ikinci olusum crash olur; esp_netif_get_handle ile guard.) */
+    /* STA netif: needed for prov mgr scanning + the connection attempt. In the captive branches
+       wifi_start() never runs -> there is no STA netif; create one. (In the in-place fallback
+       wifi_start had already created it -> a second creation crashes; guarded with esp_netif_get_handle.) */
     if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
         if (esp_netif_create_default_wifi_sta() == NULL) {
             ESP_LOGE(TAG, "could not create STA netif (OOM?) - SKIPPING BLE prov (captive still works)");
             return ESP_FAIL;
         }
     }
-    /* APSTA: AP'de captive portal YASAMAYA DEVAM eder, STA prov mgr'a kalir. (Cred-apply
-       aninda mgr modu degistirirse AP duser — o an zaten kurulum bitiyor, kabul.) */
+    /* APSTA: the captive portal KEEPS LIVING on the AP, the STA is left to prov mgr. (If mgr changes
+       the mode at the moment the cred is applied, the AP drops — setup is finishing at that point anyway, accepted.) */
     esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "APSTA switch FAIL: %s - SKIPPING BLE prov", esp_err_to_name(e));
@@ -134,8 +134,8 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
 
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, prov_event, NULL));
 
-    /* scheme_event_handler NONE: basarida cihaz zaten restart ediyor — BT bellegini
-       geri kazanma makrolarina (FREE_BTDM vb.) gerek yok, en az suprizli yol. */
+    /* scheme_event_handler NONE: on success the device restarts anyway — there is no need for the
+       BT memory reclaim macros (FREE_BTDM etc.), this is the least surprising path. */
     wifi_prov_mgr_config_t cfg = {
         .scheme = wifi_prov_scheme_ble,
         .scheme_event_handler = WIFI_PROV_EVENT_HANDLER_NONE,
@@ -146,19 +146,19 @@ esp_err_t gs_bleprov_start(const gs_identity_t *id) {
         return e;
     }
 
-    /* BLE adv adi: model prefix'i + device_id kuyrugu -> app hem MODEL tanir (GST1- =
-       GeoShake T1) hem cihazi ayirt eder. "GEO-XXXXX" -> "GST1-XXXXX" (10 char, adv'ye sigar).
-       Tampon 40: worst-case prefix(5)+device_id(31)+NUL=37 (-Werror=format-truncation susar);
-       gercek id'ler 9 char -> ad 10 char kalir. */
+    /* BLE adv name: the model prefix + the device_id tail -> the app both recognises the MODEL
+       (GST1- = GeoShake T1) and tells devices apart. "GEO-XXXXX" -> "GST1-XXXXX" (10 chars, fits in adv).
+       Buffer of 40: worst case prefix(5)+device_id(31)+NUL=37 (keeps -Werror=format-truncation quiet);
+       real ids are 9 chars -> the name stays 10 chars. */
     char service_name[40];
     const char *suffix = strncmp(id->device_id, "GEO-", 4) == 0 ? id->device_id + 4 : id->device_id;
     snprintf(service_name, sizeof(service_name), "%s%s", GS_BLE_NAME_PREFIX, suffix);
 
-    /* Custom endpoint SIRASI onemli (IDF sozlesmesi): create START'tan ONCE, register SONRA. */
+    /* The custom endpoint ORDER matters (IDF contract): create BEFORE START, register AFTER. */
     wifi_prov_mgr_endpoint_create("gs-info");
 
-    /* Security1: X25519 + PoP + AES-CTR. PoP v1'de urun-geneli sabit (sifir surtunme karari);
-       pencere dar — cihaz yalniz KURULMAMISKEN yayinda. Ileride QR-PoP'a gecilebilir. */
+    /* Security1: X25519 + PoP + AES-CTR. In v1 the PoP is a product-wide constant (zero-friction decision);
+       the window is narrow — the device only advertises while it is NOT SET UP. QR-PoP is a possible future move. */
     e = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, (const void *)GS_BLE_POP,
                                          service_name, NULL);
     if (e != ESP_OK) {

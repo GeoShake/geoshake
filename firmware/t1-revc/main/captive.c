@@ -24,16 +24,16 @@
 #include "dns_server.h"        /* N2e: DNS hijack (vendored, T1) — start_dns_server / DNS_SERVER_CONFIG_SINGLE */
 #include "identity.h"
 
-#define GS_BODY_MAX 1024   /* POST /save govde tamponu ust siniri (content-len guard) */
+#define GS_BODY_MAX 1024   /* upper bound of the POST /save body buffer (content-len guard) */
 
 static const char *TAG = "captive";
 
 static httpd_handle_t s_server = NULL;
-static dns_server_handle_t s_dns = NULL;   /* N2e: DNS hijack handle (start_webserver'da kurulur, restart'a kadar yasar) */
+static dns_server_handle_t s_dns = NULL;   /* N2e: DNS hijack handle (set up in start_webserver, lives until restart) */
 
-/* ---- Sayfa sablonlari ----
-   Tek-tirnakli HTML oznitelikleri (C string'inde \" kacisini elemek icin); charset utf-8.
-   Kullanici girdisi sayfalara ASLA yazilmaz (XSS yok); hata mesajlari sabit/derleyici-kontrollu. */
+/* ---- Page templates ----
+   Single-quoted HTML attributes (to avoid \" escapes inside the C string); charset utf-8.
+   User input is NEVER written into the pages (no XSS); error messages are constant/compiler-checked. */
 static const char FORM_HEAD[] =
 "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -63,10 +63,10 @@ static const char SUCCESS_HTML[] =
 "<p>Your device is restarting and will connect to your Wi-Fi. You can close this page.</p>"
 "</body></html>";
 
-/* ---- yardimcilar ---- */
+/* ---- helpers ---- */
 
-/* application/x-www-form-urlencoded decode (yerinde): %XX hex + '+' -> bosluk.
-   Bozuk %XX (hex degil) literal '%' olarak gecer. */
+/* application/x-www-form-urlencoded decode (in place): %XX hex + '+' -> space.
+   A malformed %XX (not hex) passes through as a literal '%'. */
 static void url_decode(char *s) {
     char *d = s;
     while (*s) {
@@ -84,8 +84,8 @@ static void url_decode(char *s) {
     *d = '\0';
 }
 
-/* urlencoded govdeden 'key' degerini cikar -> out (URL-decode edilmis, out_sz'e clamp).
-   Bulunamazsa out[0]='\0'. Eslesme alan sinirinda (basta veya '&' sonrasi) yapilir. */
+/* Extract the value of 'key' from the urlencoded body -> out (URL-decoded, clamped to out_sz).
+   If not found, out[0]='\0'. Matching is done at a field boundary (at the start or after an '&'). */
 static void form_get(const char *body, const char *key, char *out, size_t out_sz) {
     out[0] = '\0';
     size_t klen = strlen(key);
@@ -106,7 +106,7 @@ static void form_get(const char *body, const char *key, char *out, size_t out_sz
     }
 }
 
-/* Formu gonder; err verilirse (bos degilse) uste hata satiri eklenir. */
+/* Send the form; if err is supplied (and not empty) an error line is added on top. */
 static esp_err_t send_form(httpd_req_t *req, const char *err) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_sendstr_chunk(req, FORM_HEAD);
@@ -116,11 +116,11 @@ static esp_err_t send_form(httpd_req_t *req, const char *err) {
         httpd_resp_sendstr_chunk(req, "</p>");
     }
     httpd_resp_sendstr_chunk(req, FORM_TAIL);
-    httpd_resp_sendstr_chunk(req, NULL);   /* yaniti sonlandir */
+    httpd_resp_sendstr_chunk(req, NULL);   /* terminate the response */
     return ESP_OK;
 }
 
-/* ---- HTTP handler'lari ---- */
+/* ---- HTTP handlers ---- */
 
 static esp_err_t get_root(httpd_req_t *req) {
     return send_form(req, NULL);
@@ -130,7 +130,7 @@ static esp_err_t post_save(httpd_req_t *req) {
     int total = req->content_len;
     if (total <= 0 || total > GS_BODY_MAX) {
         ESP_LOGW(TAG, "POST /save invalid content_len=%d", total);
-        return send_form(req, "Gecersiz istek (govde boyutu).");
+        return send_form(req, "Invalid form submission. Please try again.");
     }
 
     char body[GS_BODY_MAX + 1];
@@ -139,8 +139,8 @@ static esp_err_t post_save(httpd_req_t *req) {
     while (off < total) {
         int r = httpd_req_recv(req, body + off, total - off);
         if (r <= 0) {
-            /* Sinirli yeniden dene: stall eden client (Content-Length verip govde gondermeyen)
-               tek-thread httpd task'ini suresiz kilitlemesin -> ~5 ardisik timeout sonra birak. */
+            /* Bounded retry: a stalling client (one that gives a Content-Length but sends no body)
+               must not lock the single-threaded httpd task forever -> give up after ~5 consecutive timeouts. */
             if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 5) continue;
             ESP_LOGW(TAG, "POST /save body read error/timeout (%d)", r);
             return ESP_FAIL;
@@ -154,49 +154,49 @@ static esp_err_t post_save(httpd_req_t *req) {
     form_get(body, "wifi_ssid", wifi_ssid, sizeof(wifi_ssid));
     form_get(body, "wifi_pass", wifi_pass, sizeof(wifi_pass));
 
-    /* Dogrula (uzunluk siniri gs_identity_save_wifi'de YOK -> burada zorunlu upstream guard;
-       asiri uzun SSID/parola NVS'e yazilirsa sonraki boot'ta sessizce yuklenemez).
-       Sir DEGERLERI loglanmaz; yalniz hangi alanin neden gecersiz oldugu kullaniciya doner. */
+    /* Validate (there is NO length limit in gs_identity_save_wifi -> this upstream guard is mandatory
+       here; an over-long SSID/password written to NVS silently fails to load on the next boot).
+       Secret VALUES are not logged; only which field was invalid and why goes back to the user. */
     if (wifi_ssid[0] == '\0' || strlen(wifi_ssid) > 32)
         return send_form(req, "Wi-Fi network name is required (max 32 characters).");
     if (strlen(wifi_pass) > 63)
         return send_form(req, "Wi-Fi password is too long (max 63 characters).");
 
-    /* SADECE WiFi anahtarlarini yaz; MQTT kimligi (admin esptool ile gomdu) korunur.
-       wifi_pass bos olabilir (acik ag) -> gs_identity_save_wifi(ssid, "") gecerli. */
+    /* Write ONLY the WiFi keys; the MQTT identity (embedded by the admin with esptool) is preserved.
+       wifi_pass may be empty (open network) -> gs_identity_save_wifi(ssid, "") is valid. */
     esp_err_t e = gs_identity_save_wifi(wifi_ssid, wifi_pass);
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "gs_identity_save_wifi FAIL: %s", esp_err_to_name(e));
         return send_form(req, "Could not save settings. Please try again.");
     }
-    /* ssid sir degil; wifi_pass LOGLANMAZ. */
+    /* The ssid is not a secret; wifi_pass is NOT LOGGED. */
     ESP_LOGI(TAG, "WiFi saved: ssid=%s (password not logged) - rebooting", wifi_ssid);
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_sendstr(req, SUCCESS_HTML);
 
-    vTaskDelay(pdMS_TO_TICKS(1500));   /* yanitin flush'i + tarayici render icin kisa gecikme */
+    vTaskDelay(pdMS_TO_TICKS(1500));   /* short delay for the response flush + browser render */
     esp_restart();
-    return ESP_OK;                     /* erisilmez (esp_restart geri donmez) */
+    return ESP_OK;                     /* unreachable (esp_restart does not return) */
 }
 
 /* ---- SoftAP ----
-   Ortak: AP netif + mode(AP) + SSID config + start. esp_wifi_init CAGIRMAZ (cagiran saglar):
-   boot dalinda softap_start init eder; yerinde dalda wifi_start zaten init+start etmistir.
-   Gereksinim: esp_netif_init + default event loop yapilmis olmali (her iki cagiran da yapar);
-   esp_wifi_init'e baglilik YOK (AP netif olusumu wifi surucusu durumuna dokunmaz). */
+   Shared: AP netif + mode(AP) + SSID config + start. It DOES NOT CALL esp_wifi_init (the caller
+   provides it): on the boot branch softap_start does the init; on the in-place branch wifi_start has
+   already done init+start. Requirement: esp_netif_init + the default event loop must have been done
+   (both callers do); there is NO dependency on esp_wifi_init (creating the AP netif does not touch the wifi driver state). */
 static void softap_bringup(void) {
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
     if (ap_netif == NULL) {
-        /* AP netif yok -> DHCP yapilandirilmaz, client IP alamaz, portal erisilemez. */
+        /* No AP netif -> DHCP is not configured, the client cannot get an IP, the portal is unreachable. */
         ESP_LOGE(TAG, "esp_netif_create_default_wifi_ap NULL (OOM?) - rebooting");
         esp_restart();
     }
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
     uint8_t mac[6] = {0};
-    esp_err_t me = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);   /* efuse'tan; SSID benzersizligi icin son 2 bayt */
-    if (me != ESP_OK)   /* basarisizsa mac {0} kalir -> GeoShake-0000 fallback (loglanir) */
+    esp_err_t me = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);   /* from efuse; the last 2 bytes make the SSID unique */
+    if (me != ESP_OK)   /* on failure mac stays {0} -> GeoShake-0000 fallback (logged) */
         ESP_LOGW(TAG, "esp_read_mac FAIL: %s - falling back to SSID 0000", esp_err_to_name(me));
 
     wifi_config_t ap = { 0 };
@@ -204,7 +204,7 @@ static void softap_bringup(void) {
     ap.ap.ssid_len = (uint8_t)n;
     ap.ap.channel = 1;
     ap.ap.max_connection = 1;
-    ap.ap.authmode = WIFI_AUTH_OPEN;   /* acik ag — YAGNI, yalniz provisioning ani */
+    ap.ap.authmode = WIFI_AUTH_OPEN;   /* open network — YAGNI, only for the provisioning moment */
     ap.ap.beacon_interval = 100;
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
@@ -212,9 +212,9 @@ static void softap_bringup(void) {
     ESP_LOGI(TAG, "SoftAP up: SSID=%s (open network) IP=192.168.4.1", (char *)ap.ap.ssid);
 }
 
-/* Boot varyanti (mevcut davranis AYNEN): wifi henuz init DEGIL -> netif + event loop + wifi_init
-   sonra bringup. netif + default event loop: unprovisioned dalda wifi_start CALISMADI -> burada
-   temiz init. Yine de cift-init'e karsi guard (idempotent davranis). */
+/* Boot variant (existing behaviour UNCHANGED): wifi is NOT yet init'ed -> netif + event loop + wifi_init
+   then bringup. netif + default event loop: on the unprovisioned branch wifi_start DID NOT RUN -> a clean
+   init here. There is still a guard against double-init (idempotent behaviour). */
 static void softap_start(void) {
     ESP_ERROR_CHECK(esp_netif_init());
     esp_err_t le = esp_event_loop_create_default();
@@ -226,8 +226,8 @@ static void softap_start(void) {
 
 /* ---- HTTP server ---- */
 
-/* N2e: CPD probe'lari (iOS captive.apple.com / Android generate_204 / Win connecttest) DNS-hijack'le
-   buraya gelir → bilinmeyen URI → 302 form'a. iOS icin govde ZORUNLU (sirf redirect yetmez). */
+/* N2e: CPD probes (iOS captive.apple.com / Android generate_204 / Win connecttest) arrive here via the
+   DNS hijack → unknown URI → 302 to the form. A body is MANDATORY for iOS (a bare redirect is not enough). */
 static esp_err_t captive_404_handler(httpd_req_t *req, httpd_err_code_t err) {
     httpd_resp_set_status(req, "302 Temporary Redirect");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -236,20 +236,20 @@ static esp_err_t captive_404_handler(httpd_req_t *req, httpd_err_code_t err) {
 }
 
 static void start_webserver(void) {
-    /* N2e: redirect trafigi (CPD probe → 302) httpd loglarini doldurur; gurultuyu kis (kozmetik). */
+    /* N2e: the redirect traffic (CPD probe → 302) floods the httpd logs; turn the noise down (cosmetic). */
     esp_log_level_set("httpd_uri", ESP_LOG_ERROR);
     esp_log_level_set("httpd_txrx", ESP_LOG_ERROR);
     esp_log_level_set("httpd_parse", ESP_LOG_ERROR);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.stack_size = 8192;          /* post_save govde tamponu (~1.5KB) icin rahat pay */
+    config.stack_size = 8192;          /* comfortable headroom for the post_save body buffer (~1.5KB) */
     config.lru_purge_enable = true;
-    config.max_open_sockets = 13;      /* N2e: 13 = upstream captive_portal degeri. httpd +3 internal
-                                          (esp_http_server.h) → 13+3=16 LWIP(16)'yi TAM DOLDURUR (bos marj YOK);
-                                          DNS(+1)/in-place MQTT(+1) LRU-purge + graceful-degrade ile tolere — marji geri alma */
+    config.max_open_sockets = 13;      /* N2e: 13 = the upstream captive_portal value. httpd adds +3 internal
+                                          (esp_http_server.h) → 13+3=16 FILLS LWIP(16) COMPLETELY (NO spare margin);
+                                          DNS(+1)/in-place MQTT(+1) are tolerated via LRU-purge + graceful degradation — do not take the margin back */
     esp_err_t e = httpd_start(&s_server, &config);
     if (e != ESP_OK) {
-        /* HTTP yoksa SoftAP acik ama portal yanitsiz -> cihaz unprovisionable. Yeniden dene. */
+        /* Without HTTP the SoftAP is up but the portal does not answer -> the device is unprovisionable. Retry. */
         ESP_LOGE(TAG, "httpd_start FAIL: %s - rebooting", esp_err_to_name(e));
         esp_restart();
     }
@@ -258,7 +258,7 @@ static void start_webserver(void) {
     httpd_register_uri_handler(s_server, &u_root);
     httpd_register_uri_handler(s_server, &u_save);
     httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, captive_404_handler);
-    /* DNS hijack: tum A sorgulari → softAP IP (192.168.4.1) → CPD probe'lari cihaza gelir. */
+    /* DNS hijack: all A queries → the softAP IP (192.168.4.1) → the CPD probes reach the device. */
     dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
     s_dns = start_dns_server(&dns_cfg);
     if (s_dns == NULL)
@@ -273,21 +273,23 @@ void gs_captive_start(void) {
     softap_start();
     start_webserver();
     ESP_LOGI(TAG, "Setup: join the 'GeoShake-XXXX' network; your phone opens the setup page AUTOMATICALLY "
-                  "(DNS hijack + 302 aktif). Elle: http://192.168.4.1");
+                  "(DNS hijack + 302 active). Manual: http://192.168.4.1");
     ESP_LOGI(TAG, "captive heap=%lu", (unsigned long)esp_get_free_heap_size());
-    /* BLEPROV: artik NON-BLOCKING — SoftAP + httpd kendi task'larinda yasar; cagiran (app_main)
-       BLE prov'u da acip kendisi bekler. Basarili POST /save yine esp_restart eder. */
+    /* BLEPROV: now NON-BLOCKING — SoftAP + httpd live in their own tasks; the caller (app_main)
+       also opens BLE prov and waits itself. A successful POST /save still does an esp_restart. */
 }
 
-/* N2d: provisioned-path 60sn baglanamadi -> wifi ZATEN init+start (STA). Reboot YOK:
-   STA'yi durdur (init korunur) -> AP+captive. Cagiran (wifi_guard_task) s_captive_fallback'i
-   ONCE set etmeli ki esp_wifi_stop'un DISCONNECTED'i reconnect tetiklemesin. */
+/* N2d/#282: the provisioned path failed to connect within the boot timeout -> wifi is ALREADY
+   init+start (STA). This function itself does NOT reboot: it stops the STA (init preserved) -> AP+
+   captive. The caller (wifi_guard_task) sets s_captive_fallback FIRST so the DISCONNECTED from
+   esp_wifi_stop does not trigger a reconnect, and REBOOTS after CAPTIVE_REBOOT_AFTER_MS if WiFi is
+   still down (power-outage self-heal). A customer save here still esp_restart's immediately. */
 void gs_captive_start_inplace(void) {
-    ESP_LOGW(TAG, "WiFi did not connect in 60 s - in-place captive (STA->AP, no reboot; creds preserved)");
-    ESP_ERROR_CHECK(esp_wifi_stop());   /* STA durur; esp_wifi_init korunur */
+    ESP_LOGW(TAG, "WiFi did not connect at boot - in-place captive (STA->AP; caller reboots if still down)");
+    ESP_ERROR_CHECK(esp_wifi_stop());   /* the STA stops; esp_wifi_init is preserved */
     softap_bringup();                   /* AP netif + mode(AP) + config + start */
     start_webserver();
     ESP_LOGI(TAG, "Recovery portal: join the 'GeoShake-XXXX' network; your phone opens it automatically. Manually: http://192.168.4.1");
     ESP_LOGI(TAG, "inplace-captive heap=%lu", (unsigned long)esp_get_free_heap_size());
-    /* BLEPROV: NON-BLOCKING — cagiran (wifi_guard_task) BLE prov'u acip kendisi bekler. */
+    /* BLEPROV: NON-BLOCKING — the caller (wifi_guard_task) opens BLE prov and waits itself. */
 }

@@ -15,3 +15,4 @@ export * from "./stalta.js";
 export * from "./orientation.js";
 export * from "./wave.js";
 export * from "./fdsn.js";
+export * from "./shake.js";

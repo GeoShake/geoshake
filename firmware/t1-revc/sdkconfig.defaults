@@ -22,7 +22,7 @@ CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
 # M1 (guvenlik): imza anahtari repo AGACI DISINDA (~/.geoshake/) → hicbir repo-sync (rsync/git)
 # suepuremez; deploy.sh exclude'una bagimli kalinmaz (C1'in kalici cozumu). Absolute path (bu makine);
 # anahtar dosyasi ne commit ne rsync edilir. Baska makinede build: bu yolu kendi ~/.geoshake'ine cevir.
-CONFIG_SECURE_BOOT_SIGNING_KEY="/Users/huseyintamer/.geoshake/ota_signing_key.pem"
+CONFIG_SECURE_BOOT_SIGNING_KEY="ota_signing_key.pem"
 # Plain HTTP OTA'ya izin ver (imza butunlugu sagliyor; TLS prototipte gereksiz)
 CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
 
@@ -43,3 +43,70 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 # Tek prov oturumu yeter — RAM kis (default 3 baglanti ~x KB host belegi).
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+
+# --- MAKSIMUM PERFORMANS PAKETI (2026-08-11) ---------------------------------
+# Tasarim: docs/plans/2026-08-11-t1-maksimum-performans-design.md
+# Cihazlar 5V 2A adaptorde; enerji tasarrufu icin yapilan varsayilan odunler geri alindi.
+#
+# UYARI: BU DOSYAYA YAZMAK VAR OLAN sdkconfig'i EZMEZ. Degisiklikten sonra:
+#      mv sdkconfig sdkconfig.onceki && idf.py reconfigure && diff sdkconfig.onceki sdkconfig
+#    Dogrulama: bash tools/check-perf-config.sh
+
+# CPU 160 -> 240 MHz. Sismik yuk zaten hafif (110 Hz), kazanc TLS el sikismasi ve
+# kriptoda: yeniden baglanma ve OTA kisalir. ~+20-30 mA.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Dinamik WiFi tamponlari 32 -> 48. Verim (OTA indirme hizi). ~+16 KB heap.
+# STATIK RX tamponu (10) ve BA penceresi (6) BILEREK ELLENMEDI: IRAM'den gidiyorlar
+# ve bu projenin stack-overflow gecmisi var (TLS main task'ta 3584 B ile coktu).
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=48
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=48
+
+# TCP penceresi 5760 -> 11520: tek RTT'de iki kat veri. ~+12 KB heap.
+# Olculen heap payi (BH2JN 30 gun): ort 114 KB, EN KOTU 81 KB. Paket sonrasi
+# en kotu hal ~53 KB bekleniyor; BT bellegi birakma bunu yukari ceker.
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+
+# ---- PSRAM (2026-09-02, filoda 0.9.27 ile CANLI) ----------------------------
+# Modul ESP32-S3-WROOM-1 N16R8: esptool ile DOGRULANDI ->
+#   "Features: WiFi, BLE, Embedded PSRAM 8MB (AP_3v3)" + "Detected flash size: 16MB"
+# R8 = OKTAL SPI PSRAM. Oktal mod GPIO 33-37'yi kullanir; firmware'in SPI yolu
+# 11/12/13, CS'ler 6/7/15/16, DRDY 17, LED 39 -> CAKISMA YOK (kontrol edildi).
+# Flash DIO modda (oktal degil), o yuzden flash/PSRAM mod catismasi da yok.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+# Kucuk ayirmalar DAHILI RAM'de kalsin (PSRAM SPI uzerinden, gecikmesi yuksek):
+# yalniz 16 KB ustu bloklar PSRAM'e dusuyor -> dalga tamponu oraya, gerisi ic RAM'de.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+# PSRAM acilinca TLS iki kez kirildi — DOGRU COZUM IKINCISI (2026-09-02, KK9YF):
+#
+# 1) CONFIG_SPIRAM=y tek basina:  mbedtls_ssl_setup -> -0x7F00 (SSL_ALLOC_FAILED)
+#    Sebep: dahili yigin uce boluniyor, TLS'in istedigi buyuk bitisik blok kalmiyor.
+# 2) DENENEN VE GERI ALINAN COZUM: CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y.
+#    TLS bagladi AMA dalga yayini kirildi: `esp-aes: Failed to allocate memory`
+#    -> ESP32-S3'un DONANIM AES hizlandiricisi PSRAM'den DMA YAPAMAZ; mbedTLS
+#    tamponlari PSRAM'deyken 5,4 KB'lik dalga parcalari sifrelenemiyor ve
+#    MQTT dusuyor. Yani mbedTLS'i PSRAM'e tasimak YANLIS KALDIRAC.
+# 3) UYGULANAN COZUM: mbedTLS DAHILI kalir (IDF varsayilani, satir eklenmez) ve
+#    yer bizim tamponumuzu tasiyarak acilir — s_wave_buf artik PSRAM'de ve
+#    statik dizi PSRAM'li derlemede HIC derlenmiyor (main.c). Dahili RAM'de
+#    55.440 bayt bosaliyor; TLS'in ihtiyaci olan yer tam da bu.
+
+# ---- WiFi/lwIP ek performans (2026-09-05, blep-0.9.19) ----------------------
+# Kaynak: ESP32-S3-WROOM-1 datasheet v1.8 incelemesi. Datasheet'in kendisi bu iki
+# ayari SOYLEMEZ (onlar IDF tarafi); inceleme sunu gosterdi: RF tarafinda yapilacak
+# is BITMIS (TX 20 dBm tavanda, HT20 dogru secim, PS_NONE kapali, 11b acik).
+# Geriye yalniz yazilim yolu uzerindeki gecikmeler kaldi ve kazanclari KUCUK.
+#
+# EXTRA_IRAM_OPT: WiFi kodunun daha fazlasi IRAM'e alinir, flash-cache duraklamalari
+# azalir. Bedeli IRAM; bu projenin stack/IRAM gecmisi hassas oldugu icin derleme
+# sonrasi IRAM tasmasi AYRICA kontrol edilir (idf.py size).
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=y
+
+# TCPIP_CORE_LOCKING: lwIP cagrilari mesaj kuyrugu yerine dogrudan kilitle yapilir;
+# soket basina ek yuk duser. Standart soket API'si kilidi kendi alir, uygulama kodu
+# DEGISMEZ. Davranis degisikligi oldugu icin filoya degil once TEST FILOSUNA cikar.
+CONFIG_LWIP_TCPIP_CORE_LOCKING=y

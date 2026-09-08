@@ -23,9 +23,51 @@ export const STALTA_PARAMS = {
   nSta: 55,               // STA pencere örnek (~0.5 s @ 109 Hz)
   nLta: 3270,             // LTA pencere örnek (~30 s @ 109 Hz)
   ltaMin: 1e-8,           // LTA tabanı (m/s²)² — Faz 0 gürültü altı; sıfıra bölme guard'ı
-  trigger: 6,             // STA/LTA tetik oranı (sonra ayarlanır)
+  // 6 -> 5 (2026-09-07, kurucu karari; OLCULDU, tahmin degil). GEO-274YU'nun 7 gunluk
+  // 1 Hz telemetrisi + 6 etiketli katalog olayi uzerinden istasyon basina yanlis-alarm
+  // orani cikarildi (gercek deprem pencereleri haric, ayri tetik epizotlari):
+  //   274YU 0,00/gun (esik 6'da da 0,00) · FVYSA 0,87 · 2TRS8 2,89 · BH2JN 2,73
+  //   A73T7 4,31 · T7ND5 5,06 · QA2HF 8,97   → artis yalniz +0,14..+1,30/gun
+  // Kazanc: M4,8@76km sinifi tetige girer (gercek orani 6,0'in hemen altindaydi),
+  // ~0,4 buyukluk hassasiyet. 4,0 SECILMEDI: orada A73T7 13,3/gun'e cikiyor.
+  // Analiz + plan: docs/plans/2026-09-07-stalta-esik-ve-eksen-kanallari.md
+  trigger: 5,             // STA/LTA tetik orani
   detrigger: 2,           // STA/LTA de-trigger oranı (histerezis)
   warmupSamples: 3270,    // bu kadar örnek geçene dek tetik bastırılır (~30 s, LTA dolsun)
+  // ON-TETIK LTA DONDURMA ESIGI (2026-09-08, 0.9.27). 0 = KAPALI. Bu set TELEFON/kalabalik
+  // yolunun sozlesmesi (crowdStationService, crowdFlagsService DEFAULT_CROWD_MIN_RATIO,
+  // assoc crowdTier.minRatio, Kotlin StaLtaParams) — burada KAPALI kalir ki aritmetik
+  // bayt-bayt eski haliyle ayni olsun (crowd-golden.json `stalta` vektoru DEGISMEDI).
+  // T1 firmware sozlesmesi asagida: T1_STALTA_PARAMS.
+  ltaFreeze: 0,
+} as const;
+
+/**
+ * T1 FIRMWARE SOZLESMESI (blep-0.9.27, 2026-09-08, kurucu karari) — STALTA_PARAMS'tan
+ * iki farkla ayrilir; firmware/main/main.c sabitleri BUNLARLA ayni olmali:
+ *
+ *   trigger 5 -> 4. OLCULDU (13 etiketli olay + 14 gun/7 istasyon 1 Hz ROC, gercek
+ *   tetik ve golge sayaciyla dogrulandi): 4,0'da M4,8@77 km kesin, M4,6@77 km yazi-tura;
+ *   filo yanlis alarmi 54 -> 80 episod/gun (+%50, dortte ucu BH2JN+QA2HF). 3,0 SECILMEDI:
+ *   137/gun (2,5x) ve iki-istasyon cakisma riski ~15x, kazanc yalniz M4,6.
+ *
+ *   ltaFreeze 2,0 (yeni). NEDEN: 30 s EMA LTA yalniz tetikte donuyordu; 77 km'den 12-13 s
+ *   yavas yukselen M4,6-4,8 sinyalinde LTA da yukselip orani basiyordu. Oran 2,0'i
+ *   gecince LTA donar (tetik ONCESI), en fazla bir LTA penceresi (nLta ornek) boyunca;
+ *   sonra kalici gurultu basamagi (makine acildi) LTA'yi sonsuza dek bayat birakmasin
+ *   diye yeniden uyum saglar. 1 Hz simulasyonda M4,8 5,90 -> 6,6-7,0, M4,6a 4,66 -> 6,1;
+ *   esik degismeden. Isinma bitmeden ASLA donmaz (LTA 1e-8 tabanindan buyurken oran
+ *   devasa olur; dondurma tabani kilitlerdi).
+ *
+ *   Gurultu maliyeti sahada olculur: firmware saglik paketi `lta_frz` (pencerede donuk
+ *   ornek sayisi) tasir. Rapor: claude.ai/code/artifact/081af377-45e2-42d7-b6d2-04b303c664b3
+ *
+ * Telefon yolu (STALTA_PARAMS) BILEREK dokunulmadi: telefon ayri kalibre edilir.
+ */
+export const T1_STALTA_PARAMS = {
+  ...STALTA_PARAMS,
+  trigger: 4,
+  ltaFreeze: 2,
 } as const;
 
 /**
@@ -70,6 +112,7 @@ export const SHADOW_STALTA_PARAMS = {
   trigger: 2.5,
   detrigger: 1.5,
   warmupSamples: 1500,
+  ltaFreeze: 0,                      // KAPALI — golge yolu 0.9.27 oncesiyle bayt-bayt ayni
 } as const;
 
 /** staltaStepWith'in parametre sözleşmesi: STALTA_PARAMS ile AYNI alanlar, sayı olarak
@@ -83,6 +126,7 @@ export interface StaltaState {
   armed: boolean;                // tetiklemeye hazır (histerezis)
   triggered: boolean;            // şu an tetikte (LTA dondurulmuş)
   count: number;                 // görülen örnek (warm-up)
+  frz: number;                   // ardışık "oran ≥ ltaFreeze" örneği (ön-tetik dondurma sayacı; 0.9.27)
 }
 
 export interface StaltaResult {
@@ -97,7 +141,7 @@ export interface StaltaResult {
  *  farklılaşırsa bu fonksiyon da parametre almalı; stalta-shadow.test.ts iki ltaMin'in
  *  eşitliğini kilitler, yani sapma sessizce geçmez. */
 export function initStalta(): StaltaState {
-  return { dc: [0, 0, 0], sta: 0, lta: STALTA_PARAMS.ltaMin, armed: true, triggered: false, count: 0 };
+  return { dc: [0, 0, 0], sta: 0, lta: STALTA_PARAMS.ltaMin, armed: true, triggered: false, count: 0, frz: 0 };
 }
 
 /**
@@ -134,7 +178,22 @@ export function staltaStepWith(s: StaltaState, sample: number[], P: StaltaParams
   const hx = ax - dc[0], hy = ay - dc[1], hz = az - dc[2];
   const cf = hx * hx + hy * hy + hz * hz;
   const sta = s.sta + (cf - s.sta) / P.nSta;
-  let lta = s.triggered ? s.lta : s.lta + (cf - s.lta) / P.nLta;  // LTA FREEZE tetikteyken
+  // ── ON-TETIK LTA DONDURMA (0.9.27; ltaFreeze 0 ise bu blok ETKISIZ, eski aritmetik) ──
+  // Karar TETIK ONCESI oranla verilir (yeni sta / eski lta): oran ≥ ltaFreeze ise LTA bu
+  // ornekte uyum saglamaz. Uc kapi: (1) isinma bitmeden ASLA — LTA 1e-8 tabanindan
+  // buyurken oran devasadir, dondurma tabani kilitlerdi; (2) tetikteyken zaten donuk;
+  // (3) SIZDIRAN SAYAC: aday ornekte +1, degilse -1 (tabani 0). Sayac nLta'yi (bir LTA
+  // penceresi) asinca dondurma BITER ve LTA uyum saglar — kalici gurultu basamagi
+  // (makine acildi) LTA'yi sonsuza dek bayat birakamaz. Sifirlamak yerine azaltmak
+  // SART (olculdu): sifirlansaydi oran 2'nin altina bir kez dusunce dondurma hemen
+  // 30 s daha yeniden baslar, oran 2,0-2,3'te dakikalarca asili kalirdi. Sizdiran
+  // sayacla yeniden dondurma, sinyalin surdugu kadar sessizlik ister.
+  // s.count ESKI sayimdir (isinma kapisi C ile ayni sirada okunur).
+  const frzAday = P.ltaFreeze > 0 && !s.triggered && s.count >= P.warmupSamples
+    && sta / s.lta >= P.ltaFreeze;
+  const frz = frzAday ? s.frz + 1 : (s.frz > 0 ? s.frz - 1 : 0);
+  const donuk = s.triggered || (frzAday && frz <= P.nLta);
+  let lta = donuk ? s.lta : s.lta + (cf - s.lta) / P.nLta;  // LTA FREEZE: tetikte veya on-tetik
   if (lta < P.ltaMin) lta = P.ltaMin;
   const ratio = sta / lta;
   const count = s.count + 1;
@@ -143,7 +202,7 @@ export function staltaStepWith(s: StaltaState, sample: number[], P: StaltaParams
     fired = true; triggered = true; armed = false;
   }
   if (triggered && ratio <= P.detrigger) { triggered = false; armed = true; }
-  return { state: { dc, sta, lta, armed, triggered, count }, fired, ratio, pga: Math.sqrt(cf) };
+  return { state: { dc, sta, lta, armed, triggered, count, frz }, fired, ratio, pga: Math.sqrt(cf) };
 }
 
 export function staltaStep(s: StaltaState, sample: number[]): StaltaResult {

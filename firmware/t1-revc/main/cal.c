@@ -9,49 +9,54 @@
 
 #include "cal.h"
 #include <string.h>
-#include <math.h>       /* isfinite — load-side sanitize (flash bozulmasina karsi) */
+#include <math.h>       /* isfinite — load-side sanitize (guards against flash corruption) */
 #include "nvs.h"
 #include "esp_log.h"
 
-/* NVS namespace: identity'nin "geoshake"inden AYRI. reset-id (nvs_erase_all "geoshake")
-   kalibrasyonu silmesin diye KASITLI ayrı namespace. Buradan identity ns'ine dokunulmaz. */
+/* NVS namespace: SEPARATE from identity's "geoshake". A DELIBERATELY separate namespace so that
+   reset-id (nvs_erase_all "geoshake") does not erase the calibration. The identity ns is never touched from here. */
 #define GS_CAL_NS "geoshake_cal"
 
-/* Tek blob anahtarı: load <-> save tutarlılığı için tek kaynak (typo'da sessiz bug olmasın). */
+/* Single blob key: one source of truth for load <-> save consistency (so a typo cannot silently break it). */
 #define GS_CAL_KEY_GAIN "gain"
-#define GS_CAL_GAIN_BYTES (4 * sizeof(float))   /* 4 × float = 16 byte */
+#define GS_CAL_GAIN_BYTES (4 * sizeof(float))   /* 4 x float = 16 bytes */
 
 static const char *CAL_TAG = "cal";
 
 void gs_cal_load(float gain[4]) {
     if (gain == NULL) return;
 
-    /* ÖNCE default'la (1.0f × 4); yalnız geçerli okuma ÜZERİNE yaz. Böylece her hata
-       yolu (namespace yok / anahtar yok / okuma hatası / boyut uyuşmazlığı) → 1.0. */
+    /* Default FIRST (1.0f x 4); only a valid read is written OVER it. That way every error
+       path (no namespace / no key / read error / size mismatch) → 1.0. */
     for (int i = 0; i < 4; i++) gain[i] = 1.0f;
 
     nvs_handle_t h;
     esp_err_t e = nvs_open(GS_CAL_NS, NVS_READONLY, &h);
     if (e != ESP_OK) {
-        /* Namespace hiç yoksa nvs_open ESP_ERR_NVS_NOT_FOUND verir -> kalibre-değil (default 1.0). */
+        /* NOT_FOUND: ad alani hic yazilmamis -> kalibre edilmemis, 1.0 (BEKLENEN, sessiz).
+           0.9.23: geri kalan her hata (NOT_INITIALIZED, INVALID_NAME, ...) LOGLANIR —
+           sessiz return, "kalibrasyon yok" ile "NVS okunamadi"yi ayirt edilmez kiliyordu. */
+        if (e != ESP_ERR_NVS_NOT_FOUND)
+            ESP_LOGW(CAL_TAG, "nvs_open failed (%s) -> default 1.0", esp_err_to_name(e));
         return;
     }
 
     float buf[4];
-    size_t len = GS_CAL_GAIN_BYTES;   /* 16 = tampon kapasitesi */
+    size_t len = GS_CAL_GAIN_BYTES;   /* 16 = buffer capacity */
     e = nvs_get_blob(h, GS_CAL_KEY_GAIN, buf, &len);
     nvs_close(h);
 
     if (e == ESP_OK && len == GS_CAL_GAIN_BYTES) {
-        memcpy(gain, buf, GS_CAL_GAIN_BYTES);   /* geçerli 16-byte blob -> uygula */
-        /* Flash bozulmasina karsi savun: NaN/inf ya da [CAL_GAIN_MIN,CAL_GAIN_MAX] disi
-           eleman -> o elemani 1.0'a dondur (lroundf'e cop/NaN besleme -> apply_cal). Eleman
-           bazli: bir sensör bozuksa digerlerinin gecerli gain'i korunur. */
+        memcpy(gain, buf, GS_CAL_GAIN_BYTES);   /* valid 16-byte blob -> apply */
+        /* Defend against flash corruption: an element that is NaN/inf or outside
+           [CAL_GAIN_MIN,CAL_GAIN_MAX] -> reset that element to 1.0 (do not feed garbage/NaN to
+           lroundf -> apply_cal). Per element: if one sensor is corrupt, the valid gains of the
+           others are preserved. */
         for (int i = 0; i < 4; i++)
             if (!isfinite(gain[i]) || gain[i] < CAL_GAIN_MIN || gain[i] > CAL_GAIN_MAX)
                 gain[i] = 1.0f;
     } else if (e != ESP_ERR_NVS_NOT_FOUND) {
-        /* Anahtar var ama okunamadı / boyut yanlış -> default 1.0 korunur, uyar. */
+        /* Key exists but could not be read / wrong size -> the 1.0 default is kept, warn. */
         ESP_LOGW(CAL_TAG, "gain blob invalid (e=%d len=%u) -> default 1.0",
                  (int)e, (unsigned)len);
     }
@@ -64,8 +69,8 @@ esp_err_t gs_cal_save(const float gain[4]) {
     esp_err_t e = nvs_open(GS_CAL_NS, NVS_READWRITE, &h);
     if (e != ESP_OK) return e;
 
-    /* Tek blob (16 byte) yaz, sonra commit. gain param'ı pointer'a çürür -> sizeof KULLANMA,
-       sabit GS_CAL_GAIN_BYTES ile yaz. Identity "geoshake" ns'ine dokunulmaz. */
+    /* Write a single blob (16 bytes), then commit. The gain parameter decays to a pointer -> DO NOT
+       USE sizeof, write with the GS_CAL_GAIN_BYTES constant. The identity "geoshake" ns is not touched. */
     e = nvs_set_blob(h, GS_CAL_KEY_GAIN, gain, GS_CAL_GAIN_BYTES);
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);

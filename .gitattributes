@@ -1,0 +1,20 @@
+# GitHub Linguist - what counts toward the repository language bar.
+#
+# Measured 2026-09-08. Two trees are excluded, for two different reasons:
+#
+#   firmware/t1-revc/components/   Third-party. Today this is one component,
+#                                  Espressif's dns_server example (3 files,
+#                                  12 KB, SPDX: Unlicense OR CC0-1.0). Small,
+#                                  but it is not our code.
+#   firmware/legacy/               Our own, but unmaintained: the original
+#                                  Arduino LSM6DS3 variants that predate the
+#                                  T1. Kept for reference, not representative
+#                                  of the project. See firmware/legacy/README.md.
+#
+# Everything else stays counted on purpose. The shipping firmware
+# (firmware/t1-revc/main) is C, the bit-locked DSP reference
+# (firmware/shared) is TypeScript, and diy/ is live DIY material the README
+# actively points people at - none of that should be hidden from the bar.
+
+firmware/t1-revc/components/**  linguist-vendored
+firmware/legacy/**              linguist-vendored

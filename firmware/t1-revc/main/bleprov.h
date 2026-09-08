@@ -12,22 +12,22 @@
 #include "identity.h"
 #include "esp_err.h"
 
-/* BLEPROV — BLE uzerinden WiFi kurulumu (mobil app; IoT ev cihazi UX'i).
-   ESP-IDF wifi_prov_mgr + scheme_ble (NimBLE): X25519 anahtar degisimi + PoP (Security1)
-   ile SIFRELI kanal; app cihazin gordugu WiFi listesini ceker, cred yollar, cihaz
-   BAGLANTIYI DOGRULAYIP oyle kaydeder (captive'in kor-kaydet+restart'indan daha iyi UX:
-   yanlis sifre kaydedilmez, app'e "auth error" doner, kullanici tekrar dener).
+/* BLEPROV — WiFi setup over BLE (mobile app; IoT home-device UX).
+   ESP-IDF wifi_prov_mgr + scheme_ble (NimBLE): an ENCRYPTED channel via X25519 key exchange +
+   PoP (Security1); the app pulls the WiFi list the device can see, sends the cred, and the device
+   VERIFIES THE CONNECTION before saving it (better UX than captive's blind-save+restart:
+   a wrong password is not saved, an "auth error" goes back to the app, the user tries again).
 
-   Captive portal ile YAN YANA calisir (web kurulumu bozulmaz): WiFi APSTA moduna
-   gecirilir — AP'de portal yasar, STA'yi prov mgr tarama/baglanti icin kullanir.
-   Iki yol da ayni NVS'e yazar (gs_identity_save_wifi) -> reboot -> normal boot.
+   It runs SIDE BY SIDE with the captive portal (web setup is not broken): WiFi is switched to
+   APSTA mode — the portal lives on the AP, while prov mgr uses the STA for scanning/connecting.
+   Both paths write to the same NVS (gs_identity_save_wifi) -> reboot -> normal boot.
 
-   Custom "gs-info" endpoint'i (sifreli oturum icinden) cihaz kimligini dondurur:
-   {device_id, model, fw, claim_code} — app claim_code ile sahipligi OTOMATIK baglar
-   (fiziksel erisim = kanit; cihaz yalniz KURULMAMISKEN BLE yayini yapar, pencere dar). */
+   The custom "gs-info" endpoint (from inside the encrypted session) returns the device identity:
+   {device_id, model, fw, claim_code} — with claim_code the app links ownership AUTOMATICALLY
+   (physical access = proof; the device advertises over BLE ONLY while it is NOT SET UP, so the window is narrow). */
 
-/* BLE provisioning'i baslat (NON-BLOCKING; kendi task'lari calisir).
-   On kosul: esp_netif_init + default event loop + esp_wifi_init + esp_wifi_start yapilmis
-   olmali (captive softap_start/softap_bringup saglar). STA netif yoksa olusturur ve modu
-   APSTA'ya cevirir. id yasam suresi: cagiran sahiplenir (app_main'in g_id'si — static). */
+/* Start BLE provisioning (NON-BLOCKING; it runs its own tasks).
+   Precondition: esp_netif_init + the default event loop + esp_wifi_init + esp_wifi_start must have
+   been done (captive softap_start/softap_bringup provides this). If there is no STA netif it creates
+   one and switches the mode to APSTA. id lifetime: owned by the caller (app_main's g_id — static). */
 esp_err_t gs_bleprov_start(const gs_identity_t *id);

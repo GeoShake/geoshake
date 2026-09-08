@@ -189,6 +189,28 @@ export const HealthPacket = z.object({
   heap_blk: z.number().int().nonnegative().optional(),
   mqtt_try: z.number().int().nonnegative().optional(),
   mqtt_fail: z.number().int().nonnegative().optional(),
+  /* PENCERE ICI MAKSIMUM STA/LTA (blep-0.9.26) — esige NE KADAR yaklasildigini olcer.
+     sl_max  : mevcut (filtresiz, 0,2-52 Hz) dedektorun gordugu oranin 30 sn penceredeki tepesi
+     slf_max : AYNI akisin 2-15 Hz bant gecirgen suzulmus halinde ayni tepe (YALNIZ OLCER,
+               tetiklemez). Ikisi ayni pakette gider → filtre kazanci SAHADA, gercek gurultu
+               ve gercek olaylar uzerinde, ESLI olarak olculur.
+     x100 OLCEKLI TAM SAYI (589 = 5,89): float bicimlendirme yok, rs_a ile ayni idiom.
+     KUMULATIF DEGIL: sh_trig gibi her pakette sifirlanir; deger TEK pencereye aittir.
+     Bant 2-15 Hz iki gercek olayin ham dalga formundan olculdu (ortalama 2,71x SNR kazanci);
+     analiz: docs/plans/2026-09-07-stalta-esik-ve-eksen-kanallari.md
+     OPSIYONEL: blep-0.9.25 ve oncesi gondermez (rst/sw_rst ile ayni gerekce). */
+  sl_max: z.number().int().nonnegative().optional(),
+  slf_max: z.number().int().nonnegative().optional(),
+  /* ON-TETIK LTA DONDURMA (blep-0.9.27) — T1_STALTA_PARAMS.ltaFreeze sahada gozlemi.
+     lta_frz : pencerede LTA'nin tetik ONCESI dondurulmus oldugu ORNEK sayisi (0..~3270).
+               sh_trig gibi her pakette sifirlanir; 0 = bu pencerede dondurma devreye girmedi.
+               "Hata yoklugu kanit degildir": yeni mekanizmanin gercekten calistigi ve gurultu
+               maliyeti (ne kadar sure LTA uyum saglamadi) BU alandan okunur.
+     gold    : boot golden'larinin HEPSI gecti mi (1/0). LED panik cizgisinin sunucudan
+               gorunur hali; filo OTA'sinda yeni bir golden'in sahada gectigi seri log
+               olmadan buradan teyit edilir. OPSIYONEL: 0.9.26 ve oncesi gondermez. */
+  lta_frz: z.number().int().nonnegative().optional(),
+  gold: z.number().int().min(0).max(1).optional(),
 });
 export type HealthPacket = z.infer<typeof HealthPacket>;
 

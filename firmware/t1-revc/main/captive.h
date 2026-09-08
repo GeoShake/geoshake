@@ -9,24 +9,24 @@
 
 #pragma once
 
-/* ---- Captive portal (WiFi kurulumu) — N2a-T3, BLEPROV'da noblock'a cevrildi ----
-   MQTT kimligi var ama WiFi eksikse (mqtt_ready && !wifi_ready; boot karari main.c'de)
-   app_main bunu cagirir. MQTT kimligi (device_id/mqtt_user/mqtt_pass) admin tarafindan
-   esptool ile fabrikada gomulu; musteri YALNIZ WiFi girer.
-   Acilan: SoftAP "GeoShake-XXXX" (acik ag) + HTTP form (http://192.168.4.1) + DNS hijack.
-   Kullanici wifi_ssid / wifi_pass girer -> gs_identity_save_wifi (MQTT anahtarlarina
-   dokunmaz, admin'in gomdugu kimlik korunur) -> esp_restart (artik tam kimlikle STA boot eder).
+/* ---- Captive portal (WiFi setup) — N2a-T3, made non-blocking in BLEPROV ----
+   If the MQTT identity exists but WiFi is missing (mqtt_ready && !wifi_ready; the boot decision is
+   in main.c) app_main calls this. The MQTT identity (device_id/mqtt_user/mqtt_pass) is embedded by
+   the admin at the factory with esptool; the customer enters ONLY WiFi.
+   What comes up: SoftAP "GeoShake-XXXX" (open network) + an HTTP form (http://192.168.4.1) + DNS hijack.
+   The user enters wifi_ssid / wifi_pass -> gs_identity_save_wifi (does not touch the MQTT keys,
+   the identity embedded by the admin is preserved) -> esp_restart (it now boots STA with a complete identity).
 
-   NON-BLOCKING (BLEPROV): SoftAP + httpd + DNS kendi task'larinda calisir, fonksiyon DONER.
-   Cagiran (app_main) ardindan gs_bleprov_start ile BLE kurulumu da acar ve kendisi
-   for(;;) ile bekler. Basarili provisioning (POST /save veya BLE) esp_restart eder. */
+   NON-BLOCKING (BLEPROV): SoftAP + httpd + DNS run in their own tasks, the function RETURNS.
+   The caller (app_main) then also opens BLE setup with gs_bleprov_start and waits itself
+   with for(;;). Successful provisioning (POST /save or BLE) does an esp_restart. */
 void gs_captive_start(void);
 
-/* ---- Yerinde captive (kurtarma) — N2d-T1, BLEPROV'da noblock'a cevrildi ----
-   Provisioned cihaz (MQTT+WiFi NVS'te) WiFi'ye baglanamiyorsa (yanlis parola / zayif sinyal)
-   60sn sonra wifi_guard_task (T3) bunu cagirir. Onkosul: wifi ZATEN init+start (STA modunda).
-   Reboot ETMEZ (WiFi creds korunur): esp_wifi_stop (STA) -> AP+httpd. Cagiran
-   s_captive_fallback bayragini ONCE set etmeli; aksi halde esp_wifi_stop'un urettigi
-   STA_DISCONNECTED, main.c wifi_event'inde esp_wifi_connect() reconnect'ini tetikler.
-   NON-BLOCKING: doner; cagiran (wifi_guard_task) BLE prov'u acip kendisi bekler. */
+/* ---- In-place captive (recovery) — N2d-T1, made non-blocking in BLEPROV ----
+   If a provisioned device (MQTT+WiFi in NVS) cannot connect to WiFi (wrong password / weak signal)
+   wifi_guard_task (T3) calls this after 60 s. Precondition: wifi is ALREADY init+start (in STA mode).
+   It does NOT reboot (the WiFi creds are preserved): esp_wifi_stop (STA) -> AP+httpd. The caller
+   must set the s_captive_fallback flag FIRST; otherwise the STA_DISCONNECTED produced by
+   esp_wifi_stop triggers the esp_wifi_connect() reconnect in main.c's wifi_event.
+   NON-BLOCKING: it returns; the caller (wifi_guard_task) opens BLE prov and waits itself. */
 void gs_captive_start_inplace(void);
