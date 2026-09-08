@@ -7,7 +7,7 @@ labels: question
 
 <!--
 Please check Discord first. Most questions are answered there faster than
-here: https://stt.gg/RTrkfwBN
+here: https://discord.gg/XSgWchWry
 
 Security problem? Do not ask here - see SECURITY.md.
 -->

@@ -183,6 +183,12 @@ LICENSING.md  Which licence covers which part — authoritative
 
 ## Contributing
 
+**Questions before code?** There is a Discord for people running or building
+these: [discord.gg/XSgWchWry](https://discord.gg/XSgWchWry) — `#setup-help` for a station that will
+not come online, `#build-and-print` for the enclosure and the breadboard
+version, `#data-and-network` for FDSN and ObsPy. The status-light table is
+pinned in the first one.
+
 Bug fixes, firmware improvements and enclosure remixes are welcome.
 Contributions require a DCO sign-off (`git commit -s`) — see
 [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: please read
