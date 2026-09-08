@@ -77,9 +77,10 @@ independently.
 
 ## Build it yourself
 
-1. **Enclosure** — print the STLs in
-   [`hardware/enclosure/`](hardware/enclosure/) (PETG or ASA, 25 % infill,
-   no supports) and follow the assembly guide, or modify the Fusion source.
+1. **Enclosure** — print the v2.1 STLs in
+   [`hardware/enclosure/`](hardware/enclosure/) (ASA recommended, no
+   supports, gyroid infill — 15 % lid / 99 % base and mounting base) and
+   follow the assembly guide, or modify the Fusion source.
 2. **Firmware** — build and flash
    [`firmware/t1-revc/`](firmware/t1-revc/) with ESP-IDF (instructions in
    its README).
