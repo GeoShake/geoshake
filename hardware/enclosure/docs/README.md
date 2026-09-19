@@ -59,8 +59,8 @@ insert method is what we recommend and what we print for.
 
 | Qty | Item |
 |---|---|
-| 4 | M3 heat-set insert |
-| 4 | M3 × 15 mm screw |
+| 2 | M3 heat-set insert |
+| 2 | M3 × 15 mm screw |
 
 ### Method B — nuts (the method the PDF illustrates)
 
