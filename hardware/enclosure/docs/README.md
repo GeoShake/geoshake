@@ -95,3 +95,15 @@ solid floor, then seat the device firmly in it.
 Maker Edition ships as the assembled, tested board and nothing else. The
 enclosure, the M3 hardware above, the wall fixings, **and the USB-C cable and
 power source** are all yours to supply.
+
+## Power
+
+- The board runs on **5 V through its USB-C port**. Use a **USB-A to USB-C**
+  cable with a USB-A phone charger or a computer's USB-A port. USB-C to USB-C
+  cables do not work with this board.
+- There is **no battery input**. To keep the station running through a power
+  cut, power the charger from a UPS or use a USB power bank.
+- The white **2-pin connector** next to the USB-C port, by the `T1V1` marking,
+  is for an **external buzzer** that will sound a local alarm. Firmware support
+  for it is planned as a feature makers can turn on; until then the connector
+  is not used.
