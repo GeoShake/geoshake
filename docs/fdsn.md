@@ -225,8 +225,11 @@ changed anything.
 
 Being straight about the limits is what makes the rest of it credible.
 
-- **Not a warning service.** GeoShake is a community network, not a
-  civil-protection system. Do not rely on it for life-safety decisions.
+- **Not an official warning service.** The network does send early warnings
+  to the GeoShake app and to smart homes, but GeoShake is a community
+  network, not a civil-protection system: it complements official warnings
+  rather than replacing them. Do not rely on it alone for life-safety
+  decisions.
 - **The sensors are uncalibrated MEMS accelerometers.** Amplitudes are
   indicative, not metrologically traceable.
 - **"Magnitude" in the QuakeML is a PGA-derived MMI intensity**, labelled
