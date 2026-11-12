@@ -63,6 +63,12 @@ Trademarks. "GeoShake", the GeoShake logo and the wave device are
 trademarks of Appflows Teknoloji A.S. and are expressly excluded from
 the licenses above. See TRADEMARKS.md.
 
+Third-party marks. The App Store and Google Play badges and the Google
+Home, Amazon Alexa, Home Assistant and Smart Life logos in
+assets/images/third-party/ are trademarks of their respective owners.
+They appear only to show where GeoShake works and are not covered by
+the licenses above.
+
 Seismic data is openly licensed (CC BY 4.0, see data/LICENSE) but the
 services that deliver it are operated on a best-effort basis. Access and
 documentation: https://api.geoshake.org/developer
