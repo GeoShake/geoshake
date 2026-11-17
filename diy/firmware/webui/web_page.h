@@ -130,7 +130,7 @@ footer a{color:var(--dim)}
 
   <footer>
     <span id="dev" class="mono"></span><br>
-    Served from the device · <a href="https://geoshake.org/diy">build guide</a>
+    Served from the device · <a href="https://github.com/GeoShake/geoshake/tree/main/diy">build guide</a>
   </footer>
 </main>
 
